@@ -2,7 +2,7 @@
 
 ## Status
 
-DONE - pending independent re-review
+DONE - independent re-review accepted
 
 ## Delivered
 
@@ -28,7 +28,7 @@ Exit code: 0
 PS> npm.cmd run build
 > tsc -b && vite build
 5589 modules transformed
-built in 15.27s
+built in 15.53s
 Exit code: 0
 ```
 
@@ -58,6 +58,7 @@ TDD evidence for the fix round:
 - RED: configuration failure test could not find `配置加载失败`.
 - RED: alarm workflow could not find `查看证据`.
 - GREEN: 4 focused API mode/bundle tests, lint, production build, and all 6 browser tests passed.
+- RE-REVIEW: accepted with no remaining findings (`task-3-rereview-report.md`).
 
 Responsive visual evidence:
 
@@ -78,6 +79,6 @@ Responsive visual evidence:
 
 ## Residual Risk
 
-- Vite reports two chunks over 500 kB after minification: the lazy trace chunk is about 508 kB and the shared chunk is about 590 kB. This is non-blocking for the P0 factory-LAN target but should be profiled before low-bandwidth remote deployment.
+- Vite reports two chunks over 500 kB after minification: the lazy trace chunk is about 508 kB and the shared chunk is about 595 kB. This is non-blocking for the P0 factory-LAN target but should be profiled before low-bandwidth remote deployment.
 - Docker is unavailable on this host, so the web container and Nginx proxy configuration are delivered but unverified locally.
 - Browser screenshots and Playwright session artifacts are intentionally git-ignored verification outputs.
