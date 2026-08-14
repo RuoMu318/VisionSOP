@@ -1,0 +1,17 @@
+.pdgo/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
+dist/
+.vite/
+*.db
+*.sqlite3
+data/evidence/
+data/wal/
+.env
+!.env.example
+
