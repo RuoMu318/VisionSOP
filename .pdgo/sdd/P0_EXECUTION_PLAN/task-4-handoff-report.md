@@ -2,7 +2,7 @@
 
 ## Status
 
-DONE - pending final whole-branch review
+DONE
 
 ## Acceptance Checklist
 
@@ -90,3 +90,9 @@ Both services bind to loopback for local development. Docker/Nginx deployment ex
 ## Rollback
 
 No merge or push has been performed. The implementation remains isolated on `codex/v1-software-foundation`. Rollback is a normal Git revert of the P0 feature commits; persistent test data and generated evidence remain outside Git and can be retained for audit.
+
+## Review Disposition
+
+- Task 1 independent review findings were corrected and accepted before downstream work.
+- Task 3 independent review returned four findings; fix round 1 was independently re-reviewed and accepted with no remaining findings.
+- The final whole-branch contract audit against `P0_EXECUTION_PLAN.md` found no additional Critical or Important issues.
