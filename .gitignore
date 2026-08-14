@@ -9,6 +9,10 @@ htmlcov/
 node_modules/
 dist/
 .vite/
+*.tsbuildinfo
+.playwright/
+.playwright-cli/
+output/
 *.db
 *.sqlite3
 data/evidence/

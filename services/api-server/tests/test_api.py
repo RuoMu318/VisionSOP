@@ -115,6 +115,7 @@ def test_system_hold_is_not_counted_as_process_nonconformance(client):
     assert body["cycle"]["conformance"] == "UNKNOWN"
     assert body["alarms"][-1]["domain"] == "SYSTEM"
     assert body["alarms"][-1]["code"] == "DATABASE_UNAVAILABLE"
+    assert body["health"]["database"] == "UNAVAILABLE"
 
 
 def test_websocket_starts_with_the_rest_snapshot(client):

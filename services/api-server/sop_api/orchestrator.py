@@ -313,6 +313,9 @@ class StationOrchestrator:
         steps = self._step_view(snapshot)
         alarms = [self._alarm_view(row) for row in self.repository.alarm_rows() if row.cycle_id == snapshot.cycle_id]
         assets = [self._asset_view(row) for row in self.repository.cycle_assets(snapshot.cycle_id)] if snapshot.cycle_id else []
+        database_health = "UNAVAILABLE" if any(
+            alarm["code"] == "DATABASE_UNAVAILABLE" for alarm in alarms
+        ) else "ONLINE"
         return {
             "station": {
                 "station_id": station.station_id, "name": station.name, "online": station.online,
@@ -325,7 +328,7 @@ class StationOrchestrator:
             "evidence_assets": assets,
             "health": {
                 "camera": "SIMULATED_ONLINE", "model": "SIMULATED_READY",
-                "device": "SIMULATED_ONLINE", "database": "ONLINE",
+                "device": "SIMULATED_ONLINE", "database": database_health,
             },
             "video": {"kind": "SIMULATED", "status": "ONLINE", "stream_url": None},
             "updated_at": datetime.now(timezone.utc).isoformat(),
