@@ -67,3 +67,48 @@ PS C:\Users\Administrator\Documents\ChatGPT\sop\services\core-runtime> ..\..\.ve
 ...................                                                      [100%]
 19 passed in 0.32s
 ```
+
+## Fix Round 1
+
+### Status
+
+DONE
+
+### Changed Paths
+
+- `services/core-runtime/core_runtime/contracts.py`
+- `services/core-runtime/core_runtime/engine.py`
+- `services/core-runtime/core_runtime/simulation.py`
+- `services/core-runtime/tests/test_runtime.py`
+
+### Commit
+
+- `b0e8875c868ed66717d82c4e136068b340830ef4` `fix: preserve P0 runtime safety invariants`
+
+### Commands And Exact Output
+
+The newly added safety regressions were run before the implementation change:
+
+```text
+PS services/core-runtime> ..\..\.venv\Scripts\python.exe -m pytest tests/test_runtime.py
+14 failed, 18 passed in 0.75s
+```
+
+After the implementation and final post-closure lateness regression:
+
+```text
+PS services/core-runtime> ..\..\.venv\Scripts\python.exe -m pytest tests/test_runtime.py
+.................................                                        [100%]
+33 passed in 0.53s
+```
+
+`..\..\.venv\Scripts\python.exe -m compileall -q core_runtime` completed successfully.
+
+### Resolution
+
+- Rejected Evidence remains retained for audit but is revalidated against the active cycle, frozen Bundle, validity window, freshness window, and rework attempt before it can satisfy a requirement.
+- A Cycle-level `NONCONFORMING` fact is retained through completed rework and cannot be replaced by an abort from `AWAITING_DISPOSITION`.
+- The Bundle is frozen only at `CYCLE_STARTED`; lifecycle, timeout, and disposition Events require the frozen Bundle and mismatches are classified for manual review.
+- Per-source-instance sequence and event-time watermarks classify out-of-order and outside-window inputs without applying their transition.
+- Recovery creates a durable `RECOVERY_HOLD` Event, so a second replay reconstructs the same hold and alarm.
+- Simulations assert exact normal, nonconforming, hold, aborted, and completed-rework outcomes.
