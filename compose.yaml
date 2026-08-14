@@ -1,0 +1,45 @@
+name: industrial-sop-ai
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sop}
+      POSTGRES_USER: ${POSTGRES_USER:-sop}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sop-local-only}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sop} -d ${POSTGRES_DB:-sop}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: deploy/docker/api.Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sop}:${POSTGRES_PASSWORD:-sop-local-only}@postgres:5432/${POSTGRES_DB:-sop}
+      SOP_DATA_DIR: /var/lib/sop
+      RUNTIME_MODE: ${RUNTIME_MODE:-SIMULATION}
+      STATION_ID: ${STATION_ID:-ST01}
+      STATION_NAME: ${STATION_NAME:-Assembly Station 01}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - sop_data:/var/lib/sop
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  sop_data:

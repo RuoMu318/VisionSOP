@@ -1,0 +1,13 @@
+product_plan=V1.3
+phase=P0-software-foundation
+python=3.13.14
+fastapi=0.141.1
+sqlalchemy=2.0.52
+pydantic=2.13.4
+uvicorn=0.52.3
+postgresql_image=postgres:17-alpine
+runtime_mode=SIMULATION|SHADOW|ADVISORY
+hardware_adapters=simulated
+deepstream=not-installed-p0
+tensorrt=not-installed-p0
+docker_verification=unverified-on-development-host

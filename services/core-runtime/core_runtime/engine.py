@@ -155,6 +155,8 @@ class SopEngine:
             self._timeout(event)
         elif event.event_type == "RECOVERY_HOLD":
             self._recovery_hold(event)
+        elif event.event_type == "SYSTEM_HOLD":
+            self._system_hold(event)
         elif event.event_type == "CYCLE_RESUMED":
             self._resume(event)
         elif event.event_type == "DISPOSITION_SUBMITTED":
@@ -428,6 +430,17 @@ class SopEngine:
             self._bundle_mismatch(event)
             return
         self._hold("RECOVERY_REQUIRES_REVIEW", "active cycle was recovered from WAL")
+
+    def _system_hold(self, event: Event) -> None:
+        if not self._admit_active(event):
+            return
+        if self.snapshot.cycle_state not in {CycleState.RUNNING, CycleState.ON_HOLD}:
+            self._late(event, "SYSTEM_HOLD requires an active cycle", "INVALID_TRANSITION")
+            return
+        code = str(event.payload.get("code") or "SYSTEM_UNAVAILABLE")
+        message = str(event.payload.get("message") or "required system capability is unavailable")
+        self._snapshot = self.snapshot.model_copy(update={"cycle_state": CycleState.ON_HOLD})
+        self._add_alarm(AlarmDomain.SYSTEM, code, message)
 
     def _bundle_mismatch(self, event: Event) -> None:
         self._add_alarm(AlarmDomain.PROCESS, "RUNTIME_BUNDLE_MISMATCH", "event does not match the frozen Runtime Bundle")

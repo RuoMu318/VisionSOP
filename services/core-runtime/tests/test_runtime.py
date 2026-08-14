@@ -11,6 +11,7 @@ from core_runtime.adapters import (
     SimulatedModelAdapter,
 )
 from core_runtime.contracts import (
+    AlarmDomain,
     ConformanceResult,
     CycleState,
     Disposition,
@@ -288,6 +289,18 @@ def test_recovery_hold_is_durable_and_replayable(tmp_path):
     assert recovered_twice.snapshot.cycle_state == CycleState.ON_HOLD
     assert recovered_twice.snapshot.alarms[-1].code == "RECOVERY_REQUIRES_REVIEW"
     assert [item.event_type for item in engine.wal.replay_events()].count("RECOVERY_HOLD") == 1
+
+
+def test_required_system_failure_holds_without_creating_product_ng(tmp_path):
+    engine = running_engine(tmp_path)
+    snapshot = engine.ingest(event("SYSTEM_HOLD", 3, payload={
+        "code": "DATABASE_UNAVAILABLE", "message": "database persistence is unavailable",
+    }))
+
+    assert snapshot.cycle_state == CycleState.ON_HOLD
+    assert snapshot.conformance_result == ConformanceResult.UNKNOWN
+    assert snapshot.alarms[-1].domain == AlarmDomain.SYSTEM
+    assert snapshot.alarms[-1].code == "DATABASE_UNAVAILABLE"
 
 
 def test_adapter_contracts_emit_events_without_engine_reference(tmp_path):

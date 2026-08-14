@@ -1,0 +1,23 @@
+station_id: ST01
+name: Assembly Station 01
+runtime_mode: SIMULATION
+runtime_bundle: ST01-P0-R01
+
+camera:
+  adapter: simulated
+  profile: camera-profile-p0
+
+devices:
+  scanner:
+    adapter: simulated
+    signal_map: scanner-map-p0
+  torque:
+    adapter: simulated
+    signal_map: torque-map-p0
+
+model:
+  adapter: simulated
+  profile: model-profile-p0
+
+ingress:
+  event_lateness_seconds: 5
