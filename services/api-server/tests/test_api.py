@@ -33,7 +33,29 @@ def test_health_and_initial_station_are_software_only(client):
     assert station["cycle"]["lifecycle"] == "IDLE"
     assert station["cycle"]["conformance"] == "UNKNOWN"
     assert station["station"]["mode"] == "SIMULATION"
+    assert station["runtime_bundle"] == {
+        "bundle_id": "ST01-P0-R01",
+        "revision": "R01",
+        "sop_version": "1.0",
+        "configuration": {
+            "camera": "simulated",
+            "device": "simulated",
+            "evidence": "local",
+            "model": "simulated",
+        },
+    }
     assert len(station["steps"]) == 6
+
+
+@pytest.mark.parametrize("mode", [RuntimeMode.SIMULATION, RuntimeMode.SHADOW, RuntimeMode.ADVISORY])
+def test_station_snapshot_reports_each_allowed_runtime_mode(settings, mode):
+    scoped = Settings(
+        database_url=settings.database_url,
+        data_dir=settings.data_dir,
+        runtime_mode=mode,
+    )
+    with TestClient(create_app(scoped)) as client:
+        assert client.get("/api/v1/stations/ST01/snapshot").json()["station"]["mode"] == mode.value
 
 
 @pytest.mark.parametrize("scenario", EXPECTED)

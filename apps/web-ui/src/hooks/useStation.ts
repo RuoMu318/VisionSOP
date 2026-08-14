@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { createContext, createElement, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, stationSocketUrl } from '../api'
 import type { Disposition, StationSnapshot } from '../types'
 
 export type ConnectionState = 'CONNECTING' | 'LIVE' | 'STALE' | 'DISCONNECTED'
 
-export function useStation(stationId = 'ST01') {
+function useStationSource(stationId = 'ST01') {
   const [data, setData] = useState<StationSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -104,4 +104,19 @@ export function useStation(stationId = 'ST01') {
       return load()
     },
   }
+}
+
+type StationContextValue = ReturnType<typeof useStationSource>
+
+const StationContext = createContext<StationContextValue | null>(null)
+
+export function StationProvider({ children, stationId = 'ST01' }: { children: ReactNode; stationId?: string }) {
+  const value = useStationSource(stationId)
+  return createElement(StationContext.Provider, { value }, children)
+}
+
+export function useStation() {
+  const value = useContext(StationContext)
+  if (!value) throw new Error('useStation must be used inside StationProvider')
+  return value
 }

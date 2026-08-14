@@ -11,6 +11,7 @@ export interface StationSnapshot {
     mode: 'SIMULATION' | 'SHADOW' | 'ADVISORY'
     runtime_bundle_id: string
   }
+  runtime_bundle: RuntimeBundleView
   cycle: CycleSummary
   steps: StepView[]
   evidence: EvidenceView[]
@@ -19,6 +20,26 @@ export interface StationSnapshot {
   health: Record<string, string>
   video: { kind: string; status: string; stream_url: string | null }
   updated_at: string
+}
+
+export interface RuntimeBundleView {
+  bundle_id: string
+  revision: string
+  sop_version: string
+  configuration: Record<string, string>
+}
+
+export interface SopStepDefinition {
+  id: string
+  name: string
+  timeout_seconds: number
+  completion: Array<{ key: string; kind: string; required: boolean }>
+}
+
+export interface SopDefinition {
+  sop_id: string
+  version: string
+  steps: SopStepDefinition[]
 }
 
 export interface CycleSummary {

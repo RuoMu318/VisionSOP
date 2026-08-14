@@ -1,6 +1,7 @@
 import { FileSearchOutlined, SearchOutlined } from '@ant-design/icons'
 import { Button, Descriptions, Drawer, Empty, Input, Table, Tag, Typography, message } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import { CycleChart } from '../components/CycleChart'
 import { ConformanceTag, LifecycleTag } from '../components/Status'
@@ -12,12 +13,30 @@ export function TracePage() {
   const [detail, setDetail] = useState<CycleDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [messageApi, contextHolder] = message.useMessage()
+  const [searchParams] = useSearchParams()
+  const requestedCycleId = searchParams.get('cycle_id')
+
+  const open = useCallback(async (cycleId: string | null) => {
+    if (!cycleId) return
+    try { setDetail(await api.cycle(cycleId)) }
+    catch (error) { messageApi.error(error instanceof Error ? error.message : 'Cycle 加载失败') }
+  }, [messageApi])
 
   const search = useCallback(async (value?: string) => {
     try { setCycles(await api.cycles(value?.trim() || undefined)) }
     catch (error) { messageApi.error(error instanceof Error ? error.message : '查询失败') }
     finally { setLoading(false) }
   }, [messageApi])
+  useEffect(() => {
+    if (!requestedCycleId) return
+    let active = true
+    void api.cycle(requestedCycleId)
+      .then((result) => { if (active) setDetail(result) })
+      .catch((error) => {
+        if (active) messageApi.error(error instanceof Error ? error.message : 'Cycle 加载失败')
+      })
+    return () => { active = false }
+  }, [messageApi, requestedCycleId])
   useEffect(() => {
     let active = true
     void api.cycles()
@@ -32,12 +51,6 @@ export function TracePage() {
   const submitSearch = () => {
     setLoading(true)
     void search(serial)
-  }
-
-  const open = async (cycleId: string | null) => {
-    if (!cycleId) return
-    try { setDetail(await api.cycle(cycleId)) }
-    catch (error) { messageApi.error(error instanceof Error ? error.message : 'Cycle 加载失败') }
   }
 
   return (
@@ -60,7 +73,7 @@ export function TracePage() {
             rowKey={(row) => row.cycle_id ?? 'empty'} loading={loading} dataSource={cycles}
             size="small" scroll={{ x: 760 }} pagination={{ pageSize: 10, showSizeChanger: false }}
             locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有匹配的 Cycle" /> }}
-            onRow={(row) => ({ onClick: () => void open(row.cycle_id), className: 'clickable-row' })}
+            onRow={(row) => ({ onClick: () => { void open(row.cycle_id) }, className: 'clickable-row' })}
             columns={[
               { title: 'Cycle', dataIndex: 'cycle_id', width: 200 },
               { title: 'SN', dataIndex: 'serial_number', width: 150 },

@@ -1,4 +1,4 @@
-import type { AlarmView, CycleDetail, CycleSummary, Disposition, StationSnapshot } from './types'
+import type { AlarmView, CycleDetail, CycleSummary, Disposition, SopDefinition, StationSnapshot } from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -30,9 +30,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ disposition, actor_id: 'quality-web', client_id: 'web-ui', reason, evidence_ids: [] }),
     }),
-  sop: () => request<{ sop_id: string; version: string; steps: Array<Record<string, unknown>> }>(
-    '/api/v1/sops/SOP_001/versions/1.0',
-  ),
+  sop: () => request<SopDefinition>('/api/v1/sops/SOP_001/versions/1.0'),
 }
 
 export function stationSocketUrl(id = 'ST01'): string {

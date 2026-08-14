@@ -77,7 +77,12 @@ class EventTimeReorderBuffer:
 def build_bundle() -> RuntimeBundle:
     return RuntimeBundle(
         bundle_id="ST01-P0-R01", revision="R01", sop_version="1.0",
-        configuration=(("camera", "simulated"), ("device", "simulated"), ("model", "simulated")),
+        configuration=(
+            ("camera", "simulated"),
+            ("device", "simulated"),
+            ("evidence", "local"),
+            ("model", "simulated"),
+        ),
     )
 
 
@@ -320,6 +325,12 @@ class StationOrchestrator:
             "station": {
                 "station_id": station.station_id, "name": station.name, "online": station.online,
                 "mode": station.mode, "runtime_bundle_id": snapshot.runtime_bundle_id or self.bundle.bundle_id,
+            },
+            "runtime_bundle": {
+                "bundle_id": self.bundle.bundle_id,
+                "revision": self.bundle.revision,
+                "sop_version": self.bundle.sop_version,
+                "configuration": dict(self.bundle.configuration),
             },
             "cycle": self._cycle_view(snapshot, cycle.scenario if cycle else None),
             "steps": steps,

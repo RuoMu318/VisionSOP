@@ -1,6 +1,7 @@
-import { AlertOutlined, CheckOutlined, ReloadOutlined } from '@ant-design/icons'
+import { AlertOutlined, CheckOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons'
 import { Button, Input, Modal, Segmented, Space, Table, Tag, Typography, message } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import type { AlarmDomain, AlarmView } from '../types'
 
@@ -11,6 +12,7 @@ export function AlarmsPage() {
   const [selected, setSelected] = useState<AlarmView | null>(null)
   const [reason, setReason] = useState('')
   const [messageApi, contextHolder] = message.useMessage()
+  const navigate = useNavigate()
 
   const load = useCallback(async () => {
     try { setAlarms(await api.alarms(domain === 'ALL' ? undefined : domain)) }
@@ -61,11 +63,17 @@ export function AlarmsPage() {
           { title: 'Domain', dataIndex: 'domain', width: 110, render: (value: AlarmDomain) => <Tag color={value === 'PROCESS' ? 'red' : 'gold'}>{value}</Tag> },
           { title: '报警代码', dataIndex: 'code', width: 210, render: (value: string) => <code>{value}</code> },
           { title: '说明', dataIndex: 'message' },
-          { title: 'Cycle', dataIndex: 'cycle_id', width: 190 },
+          { title: 'Cycle', dataIndex: 'cycle_id', width: 190, render: (value: string | null) => value ? <code>{value}</code> : '—' },
           { title: '状态', dataIndex: 'acknowledged', width: 100, render: (value: boolean) => value ? <Tag color="success">已确认</Tag> : <Tag color="warning">待确认</Tag> },
           {
-            title: '操作', key: 'action', width: 96,
-            render: (_, row) => <Button type="link" disabled={row.acknowledged} icon={<CheckOutlined />} onClick={() => setSelected(row)}>确认</Button>,
+            title: '操作', key: 'action', width: 190,
+            render: (_, row) => <Space size={0}>
+              <Button
+                type="link" disabled={!row.cycle_id} icon={<EyeOutlined />}
+                onClick={() => navigate(`/trace?cycle_id=${encodeURIComponent(row.cycle_id ?? '')}`)}
+              >查看证据</Button>
+              <Button type="link" disabled={row.acknowledged} icon={<CheckOutlined />} onClick={() => setSelected(row)}>确认</Button>
+            </Space>,
           },
         ]}
       />
