@@ -54,3 +54,16 @@ None.
 - Confirmed all externally ingested business Events and internally generated timeout Events are appended with flush plus fsync before state application.
 - Confirmed duplicate and late Events cannot advance a cycle, evidence failures safely enter `ON_HOLD`, and adapters have no engine reference or state-mutation API.
 - Confirmed `ENFORCING` fails enum validation; only `SIMULATION`, `SHADOW`, and `ADVISORY` are accepted.
+
+## Concern Resolution
+
+The editable-install metadata concern is resolved by the root `.gitignore` rule `*.egg-info/`.
+
+```text
+PS C:\Users\Administrator\Documents\ChatGPT\sop> git check-ignore -v services/core-runtime/sop_core_runtime.egg-info/
+.gitignore:5:*.egg-info/    services/core-runtime/sop_core_runtime.egg-info/
+
+PS C:\Users\Administrator\Documents\ChatGPT\sop\services\core-runtime> ..\..\.venv\Scripts\python.exe -m pytest
+...................                                                      [100%]
+19 passed in 0.32s
+```

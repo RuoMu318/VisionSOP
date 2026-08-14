@@ -2,6 +2,7 @@
 .venv/
 __pycache__/
 *.py[cod]
+*.egg-info/
 .pytest_cache/
 .coverage
 htmlcov/
@@ -14,4 +15,3 @@ data/evidence/
 data/wal/
 .env
 !.env.example
-
