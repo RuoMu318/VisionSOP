@@ -75,13 +75,13 @@ export function ConfigPage() {
   return (
     <div className="standard-page config-page">
       <header className="page-title-row">
-        <div><div className="section-kicker">版本与规则</div><h1>受控配置</h1><p>查看当前冻结 Bundle、SOP 和模拟 Adapter 绑定。</p></div>
+        <div><div className="section-kicker">版本与规则</div><h1>受控配置</h1><p>查看当前冻结 Bundle、视觉 SOP 和摄像头/模型绑定。</p></div>
         <Button type="primary" icon={<CloudUploadOutlined />} disabled>发布新 Bundle</Button>
       </header>
       <Alert
         type="info" showIcon icon={<LockOutlined />}
         title="P0 配置为只读"
-        description="真实相机、PLC、模型与 ENFORCING 开关均未接入。后续硬件通过 Adapter Contract 绑定，不修改 SOP Engine。"
+        description="当前现场设备范围仅包含摄像头；真实摄像头与视觉模型尚未接入。后续设备仍通过 Adapter Contract 扩展，不修改 SOP Engine。"
         className="page-alert"
       />
       <div className="config-layout">
@@ -114,7 +114,7 @@ export function ConfigPage() {
             })),
           ]} />
           <Typography.Paragraph type="secondary" className="config-note">
-            现场接入顺序：填写连接配置 → probe → 信号映射测试 → Event 合同测试 → 绑定 Bundle → Shadow 验证。
+            摄像头接入顺序：填写连接配置 → probe → 画面与 ROI 验证 → Vision Event 合同测试 → 绑定 Bundle → Shadow 验证。
           </Typography.Paragraph>
         </section>
       </div>

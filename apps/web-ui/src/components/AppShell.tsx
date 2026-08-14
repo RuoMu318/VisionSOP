@@ -58,7 +58,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           />
           <div className="side-footer">
             <span>V0.1.0 P0</span>
-            <span>ST01 · R01</span>
+            <span>ST01 · R02</span>
           </div>
         </Sider>
         <Content className="page-content">{children}</Content>

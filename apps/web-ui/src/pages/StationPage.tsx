@@ -141,6 +141,7 @@ export function StationPage() {
           <Space size={6} wrap>
             <Tag color="blue">Bundle {data.station.runtime_bundle_id}</Tag>
             <Tag color="gold">{data.station.mode}</Tag>
+            <Tag color="cyan">纯视觉判定</Tag>
             <Tag color={connectionColor}>数据 {station.connection}</Tag>
           </Space>
         </div>
@@ -184,7 +185,7 @@ export function StationPage() {
       <div className="station-workspace">
         <section className="video-section">
           <div className="panel-heading">
-            <div><VideoCameraOutlined /><strong> 模拟相机 CAM-01</strong></div>
+            <div><VideoCameraOutlined /><strong> 视觉相机 CAM-01</strong></div>
             <Tag color="success">ONLINE · 25 FPS</Tag>
           </div>
           <div className="feed-frame"><SimulatedFeed snapshot={data} /></div>
@@ -219,7 +220,7 @@ export function StationPage() {
       </div>
 
       <section className="evidence-section">
-        <div className="panel-heading"><div><ExperimentOutlined /><strong> Evidence Matrix</strong></div><span>HARD / STATE 分离裁决</span></div>
+        <div className="panel-heading"><div><ExperimentOutlined /><strong> Evidence Matrix</strong></div><span>STATE / SOFT 视觉证据</span></div>
         <Table<EvidenceView>
           rowKey="step_id" columns={evidenceColumns} dataSource={data.evidence}
           pagination={false} size="small" scroll={{ x: 740 }}
@@ -235,11 +236,10 @@ export function StationPage() {
           ]} />
         </section>
         <section className="health-section">
-          <div className="panel-heading"><div><ToolOutlined /><strong> 系统健康</strong></div><span>模拟适配器</span></div>
+          <div className="panel-heading"><div><ToolOutlined /><strong> 系统健康</strong></div><span>摄像头 + 视觉模型</span></div>
           <Descriptions column={1} size="small" items={[
             { key: 'camera', label: <><VideoCameraOutlined /> Camera</>, children: data.health.camera },
             { key: 'model', label: <><ExperimentOutlined /> AI Model</>, children: data.health.model },
-            { key: 'device', label: <><ToolOutlined /> Device IO</>, children: data.health.device },
             { key: 'database', label: <><DatabaseOutlined /> Database</>, children: data.health.database },
           ]} />
         </section>

@@ -34,17 +34,64 @@ def test_health_and_initial_station_are_software_only(client):
     assert station["cycle"]["conformance"] == "UNKNOWN"
     assert station["station"]["mode"] == "SIMULATION"
     assert station["runtime_bundle"] == {
-        "bundle_id": "ST01-P0-R01",
-        "revision": "R01",
-        "sop_version": "1.0",
+        "bundle_id": "ST01-P0-R02",
+        "revision": "R02",
+        "sop_version": "1.1",
         "configuration": {
             "camera": "simulated",
-            "device": "simulated",
             "evidence": "local",
-            "model": "simulated",
+            "model": "simulated-vision",
         },
     }
     assert len(station["steps"]) == 6
+
+
+def test_runtime_bundle_exposes_camera_as_the_only_field_device(client):
+    station = client.get("/api/v1/stations/ST01/snapshot").json()
+
+    assert station["runtime_bundle"] == {
+        "bundle_id": "ST01-P0-R02",
+        "revision": "R02",
+        "sop_version": "1.1",
+        "configuration": {
+            "camera": "simulated",
+            "evidence": "local",
+            "model": "simulated-vision",
+        },
+    }
+
+
+def test_sop_contract_uses_only_camera_observable_evidence(client):
+    response = client.get("/api/v1/sops/SOP_001/versions/1.1")
+
+    assert response.status_code == 200
+    sop = response.json()
+    assert [step["name"] for step in sop["steps"]] == [
+        "识别产品码",
+        "产品放入治具",
+        "安装垫片",
+        "插入螺丝",
+        "执行锁紧动作（视觉确认）",
+        "完成下料",
+    ]
+    assert [step["completion"][0]["key"] for step in sop["steps"]] == [
+        "product_code_readable",
+        "product_in_fixture",
+        "washer_present",
+        "screw_present",
+        "tightening_action_observed",
+        "product_removed",
+    ]
+    assert [step["completion"][0]["kind"] for step in sop["steps"]] == [
+        "STATE", "STATE", "STATE", "STATE", "SOFT", "STATE",
+    ]
+
+
+def test_station_health_and_evidence_sources_are_vision_only(client):
+    station = client.get("/api/v1/stations/ST01/snapshot").json()
+
+    assert set(station["health"]) == {"camera", "model", "database"}
+    assert {row["source"] for row in station["evidence"]} == {"simulated-vision"}
 
 
 @pytest.mark.parametrize("mode", [RuntimeMode.SIMULATION, RuntimeMode.SHADOW, RuntimeMode.ADVISORY])
@@ -83,7 +130,7 @@ def test_cycle_trace_and_sop_version_queries(client):
     assert len(detail.json()["evidence"]) == 6
     assert client.get(f"/api/v1/cycles?serial_number={serial}").json()[0]["cycle_id"] == cycle_id
 
-    sop = client.get("/api/v1/sops/SOP_001/versions/1.0")
+    sop = client.get("/api/v1/sops/SOP_001/versions/1.1")
     assert sop.status_code == 200
     assert [item["id"] for item in sop.json()["steps"]] == [f"S0{i}" for i in range(1, 7)]
 

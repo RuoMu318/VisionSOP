@@ -2,6 +2,8 @@
 
 > 本清单以项目已核验的仓库为准。它是技术选型和研究的登记表，不代表全部会被直接合并、镜像或部署到产品中。
 
+> 当前 `ST01-P0-R02` 是 Camera-only 软件基础版本：代码只使用 `simulated-vision` 测试 Evidence，尚未集成 DeepStream、TensorRT、YOLO、MMDetection/RTMDet 或 MMAction2 的运行时和模型权重。真实摄像头接入后，必须完成下列仓库的许可证审查、版本冻结、目标工位数据训练、ONNX/TensorRT 导出与 Shadow 验收，才可以声称具备视觉检测能力。
+
 ## 1. 产品核心与优先级
 
 | 优先级 | 仓库 | 产品角色 | 使用阶段 |
@@ -15,7 +17,18 @@
 | P2 | [Differentiable Task Graph Learning](https://github.com/fpv-iplab/Differentiable-Task-Graph-Learning) | 复杂 SOP、分支流程和前后依赖关系 | V4 研究与增强 |
 | P1 | [Find My Assembly Mistakes / StateDiffNet](https://github.com/Dan-Leh/find-my-assembly-mistakes) | 漏装、错装和装配状态差异定位 | V3 增强 |
 
-## 1.1 V1 目标检测许可决策
+## 1.1 Camera-only V1 算法链路
+
+| 当前视觉步骤 | 所需算法 | 预期 Evidence | 借鉴仓库 |
+| --- | --- | --- | --- |
+| 识别产品码 | 条码/二维码检测与解码，或 OCR | `product_code_readable` | DeepStream 视频链路；识别实现按相机与码制选型 |
+| 产品放入治具、垫片/螺丝存在、产品下料 | 目标检测、分类或分割 + 固定 ROI + Temporal Filter | `product_in_fixture`、`washer_present`、`screw_present`、`product_removed` | Ultralytics 或 MMDetection/RTMDet；IndustReal 用于标注设计参考 |
+| 锁紧动作 | 视频动作识别 + 时序窗口 | `tightening_action_observed` | MMAction2 |
+| 视频接入、GPU 解码、推理、Tracking 和录像 | DeepStream + TensorRT + GStreamer | Camera/Model health、Vision Event、Evidence assets | NVIDIA DeepStream |
+
+`tightening_action_observed` 只表示摄像头观察到锁紧动作，不能证明真实扭矩。当前 V1 不接入 PLC、扫码枪、电批或传感器；这些设备在后续版本通过 Device Adapter 加入新的 Runtime Bundle，不改变 SOP Engine。
+
+## 1.2 V1 目标检测许可决策
 
 V1 在开始任何目标/状态模型训练前必须关闭 M0.1 许可决策。Ultralytics 社区软件/模型路线涉及 AGPL-3.0 与 Enterprise License 的商业使用边界，不能仅在上线前笼统检查。项目必须选择并记录以下路径之一：
 
@@ -95,5 +108,5 @@ PyTorch
 
 1. 开源仓库优先作为实现、实验或数据设计参考；不默认将其代码作为生产依赖。
 2. 引入前应固定 commit / release、校验许可证、维护状态、依赖 CVE、模型权重许可及数据集使用范围。
-3. 生产系统的 PASS/FAIL 由自研 SOP Engine 和受控设备信号决定，研究模型只能提供标准化证据事件。
+3. 生产系统的 PASS/FAIL 由自研 SOP Engine 和版本化 Evidence 决定；当前 V1 只接受视觉 Evidence，后续设备信号也只能作为标准化 Evidence Event 接入。
 4. 过去提到的 `SANKAAKASH/ppe-detection-yolo` 未在本次核验清单中，后续不作为项目来源引用。

@@ -33,13 +33,14 @@ from .repository import Repository
 
 SCENARIOS = {"normal", "nonconforming", "hold", "system_hold", "aborted", "rework"}
 STEP_NAMES = {
-    "S01": "扫描产品码",
+    "S01": "识别产品码",
     "S02": "产品放入治具",
     "S03": "安装垫片",
     "S04": "插入螺丝",
-    "S05": "锁紧并确认扭矩",
+    "S05": "执行锁紧动作（视觉确认）",
     "S06": "完成下料",
 }
+VISUAL_NG_STEP_ID = "S03"
 
 
 @dataclass(frozen=True)
@@ -76,27 +77,26 @@ class EventTimeReorderBuffer:
 
 def build_bundle() -> RuntimeBundle:
     return RuntimeBundle(
-        bundle_id="ST01-P0-R01", revision="R01", sop_version="1.0",
+        bundle_id="ST01-P0-R02", revision="R02", sop_version="1.1",
         configuration=(
             ("camera", "simulated"),
-            ("device", "simulated"),
             ("evidence", "local"),
-            ("model", "simulated"),
+            ("model", "simulated-vision"),
         ),
     )
 
 
 def build_sop() -> SopDefinition:
     requirements = (
-        ("S01", "scanner_ok", EvidenceKind.HARD),
+        ("S01", "product_code_readable", EvidenceKind.STATE),
         ("S02", "product_in_fixture", EvidenceKind.STATE),
         ("S03", "washer_present", EvidenceKind.STATE),
         ("S04", "screw_present", EvidenceKind.STATE),
-        ("S05", "torque_ok", EvidenceKind.HARD),
-        ("S06", "product_removed", EvidenceKind.HARD),
+        ("S05", "tightening_action_observed", EvidenceKind.SOFT),
+        ("S06", "product_removed", EvidenceKind.STATE),
     )
     return SopDefinition(
-        sop_id="SOP_001", version="1.0",
+        sop_id="SOP_001", version="1.1",
         steps=tuple(
             SopStep(step_id, (EvidenceRequirement(key, kind, True, 60),), timeout_seconds=30)
             for step_id, key, kind in requirements
@@ -209,7 +209,7 @@ class StationOrchestrator:
         items: list[Event] = []
         for offset, step in enumerate(steps):
             req = step.required[0]
-            value = False if violation and step.step_id == "S05" else True
+            value = False if violation and step.step_id == VISUAL_NG_STEP_ID else True
             evidence = Evidence(
                 evidence_id=f"{cycle_id}-{step.step_id}-A{attempt}", cycle_id=cycle_id,
                 step_id=step.step_id, key=req.key, kind=req.kind, value=value,
@@ -223,7 +223,7 @@ class StationOrchestrator:
                 {"evidence": evidence.model_dump(mode="json")},
                 step_id=step.step_id, occurred_at=evidence.occurred_at,
             ))
-            if violation and step.step_id == "S05":
+            if violation and step.step_id == VISUAL_NG_STEP_ID:
                 break
         return items
 
@@ -339,7 +339,7 @@ class StationOrchestrator:
             "evidence_assets": assets,
             "health": {
                 "camera": "SIMULATED_ONLINE", "model": "SIMULATED_READY",
-                "device": "SIMULATED_ONLINE", "database": database_health,
+                "database": database_health,
             },
             "video": {"kind": "SIMULATED", "status": "ONLINE", "stream_url": None},
             "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -404,7 +404,7 @@ class StationOrchestrator:
                 "required": True, "expected": req.expected_value,
                 "value": found.value if found else None,
                 "quality": found.quality.value if found else "MISSING",
-                "source": "simulated-device" if req.kind == EvidenceKind.HARD else "simulated-model",
+                "source": "simulated-vision",
                 "evidence_id": found.evidence_id if found else None,
             })
         return matrix

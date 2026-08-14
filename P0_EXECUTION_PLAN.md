@@ -1,6 +1,8 @@
 # P0 Software Foundation Execution Plan
 
-Source contract: `V1_IMPLEMENTATION_PLAN.md` V1.3.
+Source contract: `V1_IMPLEMENTATION_PLAN.md` V1.4 Camera-only amendment.
+
+Current Runtime Bundle `ST01-P0-R02` binds only simulated Camera/Model/Evidence adapters. `SimulatedDeviceAdapter` remains a contract-test fixture for future expansion and is not an active field device.
 
 ## Global Constraints
 
@@ -9,12 +11,12 @@ Source contract: `V1_IMPLEMENTATION_PLAN.md` V1.3.
 - Lifecycle, conformance result, and disposition remain separate fields.
 - Missing, stale, invalid, or conflicting required evidence moves the Cycle to `ON_HOLD`.
 - `ENFORCING` is unavailable in P0. Only `SIMULATION`, `SHADOW`, and `ADVISORY` are valid.
-- All hardware and model integrations use Adapter Contracts with simulated P0 implementations.
+- Camera and model integrations use Adapter Contracts with simulated P0 implementations; future Device Adapter contracts remain inactive.
 - The UI exposes lifecycle, conformance, disposition, evidence, and PROCESS/SYSTEM alarm domains separately.
 
 ## Task 1: Contracts, SOP Engine, WAL, And Simulated Adapters
 
-Create the Python workspace and implement versioned Event/Evidence contracts, immutable Runtime Bundles, the Cycle state machine, evidence policies, append-only fsync WAL, Adapter protocols, and deterministic simulated camera/model/device/evidence adapters. Add focused unit tests for normal, nonconforming, hold, abort, disposition, duplicate/late event, conflict, and recovery behavior.
+Create the Python workspace and implement versioned Event/Evidence contracts, immutable Runtime Bundles, the Cycle state machine, evidence policies, append-only fsync WAL, Adapter protocols, deterministic simulated camera/model/evidence adapters, and an inactive Device Adapter contract fixture for future expansion. Add focused unit tests for normal, nonconforming, hold, abort, disposition, duplicate/late event, conflict, and recovery behavior.
 
 Acceptance: tests pass locally; adapters cannot mutate Cycle state directly; ENFORCING is rejected.
 

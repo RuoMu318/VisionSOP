@@ -62,6 +62,18 @@ test('controlled configuration shows an explicit API failure', async ({ page }) 
   await expect(page.getByText('Runtime Bundle', { exact: true })).not.toBeVisible()
 })
 
+test('station and configuration expose the camera-only visual boundary', async ({ page }) => {
+  await page.goto('/station')
+  await expect(page.getByText('纯视觉判定', { exact: true })).toBeVisible()
+  await expect(page.getByText('执行锁紧动作（视觉确认）', { exact: true })).toBeVisible()
+  await expect(page.getByText('Device IO', { exact: true })).not.toBeVisible()
+
+  await page.goto('/config')
+  await expect(page.getByText('ST01-P0-R02', { exact: true })).toBeVisible()
+  await expect(page.getByText('simulated-vision', { exact: true })).toBeVisible()
+  await expect(page.getByText('device Adapter', { exact: true })).not.toBeVisible()
+})
+
 test('alarm workflow links to cycle evidence detail', async ({ page }) => {
   await page.goto('/station')
   await runScenario(page, '明确工艺 NG')

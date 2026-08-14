@@ -11,10 +11,15 @@ from .wal import JsonlWal
 
 
 def build_runtime(wal_path: Path | str) -> SopEngine:
-    bundle = RuntimeBundle(bundle_id="ST01-P0-R01", revision="R01", sop_version="1.0")
+    bundle = RuntimeBundle(
+        bundle_id="ST01-P0-R02",
+        revision="R02",
+        sop_version="1.1",
+        configuration=(("camera", "simulated"), ("model", "simulated-vision")),
+    )
     sop = SopDefinition(
-        sop_id="simulated-sop", version="1.0",
-        steps=(SopStep("S01", (EvidenceRequirement("fixture_present", EvidenceKind.HARD),)),),
+        sop_id="simulated-sop", version="1.1",
+        steps=(SopStep("S01", (EvidenceRequirement("product_in_fixture", EvidenceKind.STATE),)),),
     )
     return SopEngine(sop, bundle, JsonlWal(wal_path), RuntimeMode.SIMULATION)
 
@@ -45,8 +50,8 @@ def run_scenario(name: str, wal_path: Path | str) -> SopEngine:
         return engine
     value = False if name in {"nonconforming", "rework"} else True
     evidence = Evidence(
-        evidence_id=f"{cycle_id}-evidence", cycle_id=cycle_id, step_id="S01", key="fixture_present",
-        kind=EvidenceKind.HARD, value=value, occurred_at=now, valid_from=now - timedelta(seconds=1),
+        evidence_id=f"{cycle_id}-evidence", cycle_id=cycle_id, step_id="S01", key="product_in_fixture",
+        kind=EvidenceKind.STATE, value=value, occurred_at=now, valid_from=now - timedelta(seconds=1),
         valid_until=now + timedelta(seconds=30), source_seq=1, runtime_bundle_id=engine.bundle.bundle_id,
     )
     engine.ingest(event("EVIDENCE", {"evidence": evidence.model_dump(mode="json")}))

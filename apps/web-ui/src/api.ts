@@ -30,7 +30,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ disposition, actor_id: 'quality-web', client_id: 'web-ui', reason, evidence_ids: [] }),
     }),
-  sop: () => request<SopDefinition>('/api/v1/sops/SOP_001/versions/1.0'),
+  sop: () => request<SopDefinition>('/api/v1/sops/SOP_001/versions/1.1'),
 }
 
 export function stationSocketUrl(id = 'ST01'): string {
