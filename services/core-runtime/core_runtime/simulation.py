@@ -23,9 +23,11 @@ def run_scenario(name: str, wal_path: Path | str) -> SopEngine:
     engine = build_runtime(wal_path)
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     cycle_id = f"sim-{name}"
+    sequence = 0
 
     def event(kind: str, payload: dict | None = None) -> Event:
-        sequence = len(engine.snapshot.evidence) + len(engine.snapshot.alarms) + 1
+        nonlocal sequence
+        sequence += 1
         return Event(
             event_id=f"{cycle_id}-{kind}-{sequence}", event_type=kind, source="simulation",
             source_instance="simulation-1", source_seq=sequence, occurred_at=now,
@@ -51,6 +53,9 @@ def run_scenario(name: str, wal_path: Path | str) -> SopEngine:
     if name == "rework":
         command = DispositionCommand(cycle_id=cycle_id, disposition=Disposition.REWORK, actor_id="quality-1", reason="rework", client_id="simulation")
         engine.apply_disposition(command, event("DISPOSITION_SUBMITTED"))
+        repaired = evidence.model_copy(update={"evidence_id": f"{cycle_id}-rework-evidence", "value": True, "attempt": 1})
+        engine.ingest(event("EVIDENCE", {"evidence": repaired.model_dump(mode="json")}))
+        engine.ingest(event("CYCLE_END"))
         return engine
     if name == "normal":
         engine.ingest(event("CYCLE_END"))

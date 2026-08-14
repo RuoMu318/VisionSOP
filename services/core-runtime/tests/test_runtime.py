@@ -98,6 +98,26 @@ def test_invalid_or_stale_evidence_holds_cycle(tmp_path, item):
     assert snapshot.conformance_result == ConformanceResult.UNKNOWN
 
 
+@pytest.mark.parametrize(
+    "item",
+    [
+        evidence(quality=EvidenceQuality.INVALID),
+        evidence(occurred_at=NOW - timedelta(seconds=60)),
+        evidence(bundle_id="other-bundle"),
+    ],
+)
+def test_rejected_evidence_remains_inelegible_after_resume(tmp_path, item):
+    engine = running_engine(tmp_path)
+    submit_evidence(engine, item)
+
+    resumed = engine.ingest(event("CYCLE_RESUMED", 4))
+    ended = engine.ingest(event("CYCLE_END", 5))
+
+    assert resumed.cycle_state == CycleState.ON_HOLD
+    assert ended.cycle_state == CycleState.ON_HOLD
+    assert ended.conformance_result == ConformanceResult.UNKNOWN
+
+
 def test_missing_and_conflicting_evidence_hold_cycle(tmp_path):
     missing = running_engine(tmp_path).ingest(event("CYCLE_END", 3))
     assert missing.cycle_state == CycleState.ON_HOLD
@@ -162,6 +182,92 @@ def test_rework_preserves_nonconforming_fact_and_adds_attempt(tmp_path):
     assert snapshot.rework_attempt == 1
 
 
+def test_completed_rework_preserves_nonconforming_fact_and_evidence_chain(tmp_path):
+    engine = running_engine(tmp_path)
+    submit_evidence(engine, evidence(False, evidence_id="original"))
+    command = DispositionCommand(cycle_id="cycle-1", disposition=Disposition.REWORK, actor_id="quality", reason="repair", client_id="test")
+    engine.apply_disposition(command, event("DISPOSITION_SUBMITTED", 4))
+    submit_evidence(engine, evidence(True, evidence_id="rework").model_copy(update={"attempt": 1}), 5)
+    snapshot = engine.ingest(event("CYCLE_END", 6))
+
+    assert snapshot.cycle_state == CycleState.CLOSED
+    assert snapshot.conformance_result == ConformanceResult.NONCONFORMING
+    assert snapshot.disposition == Disposition.REWORK
+    assert {item.evidence_id for item in snapshot.evidence} == {"original", "rework"}
+
+
+def test_abort_after_nonconforming_cannot_erase_ng_fact(tmp_path):
+    engine = running_engine(tmp_path)
+    submit_evidence(engine, evidence(False))
+    snapshot = engine.ingest(event("CYCLE_ABORTED", 4))
+
+    assert snapshot.cycle_state == CycleState.AWAITING_DISPOSITION
+    assert snapshot.conformance_result == ConformanceResult.NONCONFORMING
+
+
+def test_start_requires_the_bundle_that_is_frozen_on_running_transition(tmp_path):
+    engine = make_engine(tmp_path)
+    engine.ingest(event("CYCLE_ARMED", 1, payload={"serial_number": "SN-001"}))
+    snapshot = engine.ingest(event("CYCLE_STARTED", 2).model_copy(update={"runtime_bundle_id": "other-bundle"}))
+
+    assert snapshot.cycle_state == CycleState.ON_HOLD
+    assert snapshot.runtime_bundle_id is None
+    assert snapshot.alarms[-1].code == "RUNTIME_BUNDLE_MISMATCH"
+
+
+@pytest.mark.parametrize("event_type", ["CYCLE_END", "CYCLE_ABORTED", "CYCLE_RESUMED"])
+def test_lifecycle_event_with_wrong_frozen_bundle_enters_hold(tmp_path, event_type):
+    engine = running_engine(tmp_path)
+    if event_type == "CYCLE_RESUMED":
+        engine.ingest(event("CYCLE_END", 3))
+    snapshot = engine.ingest(event(event_type, 4).model_copy(update={"runtime_bundle_id": "other-bundle"}))
+
+    assert snapshot.cycle_state == CycleState.ON_HOLD
+    assert snapshot.alarms[-1].code == "RUNTIME_BUNDLE_MISMATCH"
+
+
+def test_disposition_event_with_wrong_frozen_bundle_enters_hold(tmp_path):
+    engine = running_engine(tmp_path)
+    submit_evidence(engine, evidence(False))
+    command = DispositionCommand(cycle_id="cycle-1", disposition=Disposition.SCRAP, actor_id="quality", reason="reviewed", client_id="test")
+    wrong_bundle_event = event("DISPOSITION_SUBMITTED", 4).model_copy(update={"runtime_bundle_id": "other-bundle"})
+    snapshot = engine.apply_disposition(command, wrong_bundle_event)
+
+    assert snapshot.cycle_state == CycleState.AWAITING_DISPOSITION
+    assert snapshot.alarms[-1].code == "RUNTIME_BUNDLE_MISMATCH"
+
+
+def test_unique_lower_source_sequence_is_classified_without_transition(tmp_path):
+    engine = running_engine(tmp_path)
+    submit_evidence(engine, evidence())
+    out_of_order = event("CYCLE_END", 2).model_copy(update={"idempotency_key": "out-of-order-key"})
+    snapshot = engine.ingest(out_of_order)
+
+    assert snapshot.cycle_state == CycleState.RUNNING
+    assert snapshot.alarms[-1].code == "OUT_OF_ORDER_SEQUENCE"
+
+
+def test_backdated_event_outside_lateness_window_is_classified_without_transition(tmp_path):
+    engine = running_engine(tmp_path)
+    future_item = evidence(occurred_at=NOW + timedelta(seconds=10))
+    engine.ingest(event("EVIDENCE", 3, payload={"evidence": future_item.model_dump(mode="json")}, when=NOW + timedelta(seconds=10)))
+    backdated_end = event("CYCLE_END", 4, when=NOW)
+    snapshot = engine.ingest(backdated_end)
+
+    assert snapshot.cycle_state == CycleState.RUNNING
+    assert snapshot.alarms[-1].code == "LATE_EVENT"
+
+
+def test_backdated_event_after_closure_is_classified_without_reopening_cycle(tmp_path):
+    engine = running_engine(tmp_path)
+    engine.ingest(event("EVIDENCE", 3, payload={"evidence": evidence().model_dump(mode="json")}, when=NOW + timedelta(seconds=10)))
+    engine.ingest(event("CYCLE_END", 4, when=NOW + timedelta(seconds=10)))
+    snapshot = engine.ingest(event("CYCLE_STARTED", 5, when=NOW))
+
+    assert snapshot.cycle_state == CycleState.CLOSED
+    assert snapshot.alarms[-1].code == "LATE_EVENT"
+
+
 def test_wal_replays_and_checkpoint_is_available(tmp_path):
     engine = running_engine(tmp_path)
     submit_evidence(engine, evidence())
@@ -171,6 +277,17 @@ def test_wal_replays_and_checkpoint_is_available(tmp_path):
     recovered = SopEngine.recover(engine.sop, engine.bundle, engine.wal, RuntimeMode.SIMULATION)
     assert recovered.snapshot == engine.snapshot
     assert engine.wal.latest_checkpoint() == engine.snapshot
+
+
+def test_recovery_hold_is_durable_and_replayable(tmp_path):
+    engine = running_engine(tmp_path)
+    recovered_once = SopEngine.recover(engine.sop, engine.bundle, engine.wal, RuntimeMode.SIMULATION)
+    recovered_twice = SopEngine.recover(engine.sop, engine.bundle, engine.wal, RuntimeMode.SIMULATION)
+
+    assert recovered_once.snapshot.cycle_state == CycleState.ON_HOLD
+    assert recovered_twice.snapshot.cycle_state == CycleState.ON_HOLD
+    assert recovered_twice.snapshot.alarms[-1].code == "RECOVERY_REQUIRES_REVIEW"
+    assert [item.event_type for item in engine.wal.replay_events()].count("RECOVERY_HOLD") == 1
 
 
 def test_adapter_contracts_emit_events_without_engine_reference(tmp_path):
@@ -199,7 +316,19 @@ def test_enforcing_mode_is_hard_rejected(tmp_path):
         SopEngine(engine.sop, engine.bundle, engine.wal, "ENFORCING")
 
 
-@pytest.mark.parametrize("scenario", ["normal", "nonconforming", "hold", "aborted", "rework"])
-def test_simulation_runtime_covers_required_scenarios(tmp_path, scenario):
+@pytest.mark.parametrize(
+    ("scenario", "state", "result", "disposition", "attempt"),
+    [
+        ("normal", CycleState.CLOSED, ConformanceResult.CONFORMING, Disposition.NONE, 0),
+        ("nonconforming", CycleState.AWAITING_DISPOSITION, ConformanceResult.NONCONFORMING, Disposition.NONE, 0),
+        ("hold", CycleState.ON_HOLD, ConformanceResult.UNKNOWN, Disposition.NONE, 0),
+        ("aborted", CycleState.CLOSED, ConformanceResult.ABORTED, Disposition.NONE, 0),
+        ("rework", CycleState.CLOSED, ConformanceResult.NONCONFORMING, Disposition.REWORK, 1),
+    ],
+)
+def test_simulation_runtime_has_exact_required_outcomes(tmp_path, scenario, state, result, disposition, attempt):
     engine = run_scenario(scenario, tmp_path / f"{scenario}.jsonl")
-    assert engine.snapshot.cycle_state in set(CycleState)
+    assert engine.snapshot.cycle_state == state
+    assert engine.snapshot.conformance_result == result
+    assert engine.snapshot.disposition == disposition
+    assert engine.snapshot.rework_attempt == attempt

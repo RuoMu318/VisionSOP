@@ -102,6 +102,7 @@ class Evidence(BaseModel):
     source_seq: int = Field(ge=1)
     quality: EvidenceQuality = EvidenceQuality.VALID
     runtime_bundle_id: str
+    attempt: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def validity_window_is_ordered(self) -> "Evidence":

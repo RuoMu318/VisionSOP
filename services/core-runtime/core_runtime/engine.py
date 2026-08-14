@@ -20,6 +20,7 @@ from .contracts import (
     Event,
     RuntimeBundle,
     RuntimeMode,
+    utc_now,
 )
 from .wal import JsonlWal
 
@@ -49,7 +50,14 @@ class SopDefinition:
 class SopEngine:
     """A cycle is derived solely by replaying journaled inputs."""
 
-    def __init__(self, sop: SopDefinition, bundle: RuntimeBundle, wal: JsonlWal, mode: RuntimeMode | str) -> None:
+    def __init__(
+        self,
+        sop: SopDefinition,
+        bundle: RuntimeBundle,
+        wal: JsonlWal,
+        mode: RuntimeMode | str,
+        lateness_window_seconds: int = 5,
+    ) -> None:
         self.sop = sop
         self.bundle = bundle
         self.wal = wal
@@ -58,6 +66,8 @@ class SopEngine:
         self._seen: set[str] = set()
         self._started_at: datetime | None = None
         self._engine_sequence = 0
+        self._source_watermarks: dict[str, tuple[int, datetime]] = {}
+        self.lateness_window = timedelta(seconds=lateness_window_seconds)
 
     @property
     def snapshot(self) -> CycleSnapshot:
@@ -69,7 +79,19 @@ class SopEngine:
         for event in wal.replay_events():
             engine._apply_event(event)
         if engine.snapshot.cycle_state in {CycleState.ARMED, CycleState.RUNNING}:
-            engine._hold("RECOVERY_REQUIRES_REVIEW", "active cycle was recovered from WAL")
+            now = utc_now()
+            engine.ingest(Event(
+                event_id=f"recovery-hold-{engine.snapshot.cycle_id}",
+                event_type="RECOVERY_HOLD",
+                source="sop-recovery",
+                source_instance="sop-recovery-1",
+                source_seq=1,
+                occurred_at=now,
+                ingested_at=now,
+                idempotency_key=f"recovery-hold-{engine.snapshot.cycle_id}",
+                cycle_id=engine.snapshot.cycle_id,
+                runtime_bundle_id=engine.snapshot.runtime_bundle_id,
+            ))
         return engine
 
     def ingest(self, event: Event) -> CycleSnapshot:
@@ -116,6 +138,8 @@ class SopEngine:
         if identity in self._seen:
             return
         self._seen.add(identity)
+        if not self._accepts_ordering(event):
+            return
 
         if event.event_type == "CYCLE_ARMED":
             self._arm(event)
@@ -129,6 +153,8 @@ class SopEngine:
             self._abort(event)
         elif event.event_type == "STEP_TIMEOUT":
             self._timeout(event)
+        elif event.event_type == "RECOVERY_HOLD":
+            self._recovery_hold(event)
         elif event.event_type == "CYCLE_RESUMED":
             self._resume(event)
         elif event.event_type == "DISPOSITION_SUBMITTED":
@@ -146,20 +172,27 @@ class SopEngine:
             cycle_id=event.cycle_id,
             serial_number=serial_number,
             cycle_state=CycleState.ARMED,
-            runtime_bundle_id=self.bundle.bundle_id,
             current_step_id=self.sop.steps[0].step_id if self.sop.steps else None,
         )
 
     def _start(self, event: Event) -> None:
-        if not self._matches_active(event) or self.snapshot.cycle_state != CycleState.ARMED:
+        if not self._matches_cycle(event) or self.snapshot.cycle_state != CycleState.ARMED:
             self._late(event, "CYCLE_STARTED does not match an armed cycle")
             return
-        self._snapshot = self.snapshot.model_copy(update={"cycle_state": CycleState.RUNNING})
+        if event.runtime_bundle_id != self.bundle.bundle_id:
+            self._bundle_mismatch(event)
+            return
+        self._snapshot = self.snapshot.model_copy(update={
+            "cycle_state": CycleState.RUNNING,
+            "runtime_bundle_id": self.bundle.bundle_id,
+        })
         self._started_at = event.occurred_at
 
     def _accept_evidence(self, event: Event) -> None:
-        if not self._matches_active(event) or self.snapshot.cycle_state not in {CycleState.RUNNING, CycleState.ON_HOLD}:
-            self._late(event, "evidence is late or does not match the active cycle")
+        if not self._admit_active(event):
+            return
+        if self.snapshot.cycle_state not in {CycleState.RUNNING, CycleState.ON_HOLD}:
+            self._late(event, "evidence is late for the active cycle")
             return
         evidence_data = event.payload.get("evidence")
         if not isinstance(evidence_data, dict):
@@ -168,7 +201,11 @@ class SopEngine:
         evidence = Evidence.model_validate(evidence_data)
         retained = self.snapshot.evidence + (evidence,)
         self._snapshot = self.snapshot.model_copy(update={"evidence": retained})
-        if evidence.cycle_id != self.snapshot.cycle_id or evidence.runtime_bundle_id != self.bundle.bundle_id:
+        if (
+            evidence.cycle_id != self.snapshot.cycle_id
+            or evidence.runtime_bundle_id != self.snapshot.runtime_bundle_id
+            or evidence.attempt != self.snapshot.rework_attempt
+        ):
             self._hold("CYCLE_BINDING_INVALID", "evidence is bound to another cycle or bundle", evidence)
             return
         if not self._is_fresh_and_valid(evidence, event):
@@ -181,24 +218,40 @@ class SopEngine:
         if requirement and evidence.kind in {EvidenceKind.HARD, EvidenceKind.STATE} and evidence.value != requirement.expected_value:
             self._nonconforming("DEFINITE_VIOLATION", f"{evidence.key} violated its required value", evidence)
             return
-        self._reconcile()
+        self._reconcile(event.ingested_at)
 
     def _end(self, event: Event) -> None:
-        if not self._matches_active(event) or self.snapshot.cycle_state != CycleState.RUNNING:
+        if not self._admit_active(event):
+            return
+        if self.snapshot.cycle_state != CycleState.RUNNING:
             self._late(event, "CYCLE_END requires a running active cycle")
             return
-        if len(self.snapshot.completed_step_ids) != len(self.sop.steps):
+        if (
+            len(self.snapshot.completed_step_ids) != len(self.sop.steps)
+            or not self._all_completed_requirements_valid(event.ingested_at)
+        ):
             self._hold("MISSING_REQUIRED_EVIDENCE", "cycle ended before all required evidence was valid")
             return
         self._snapshot = self.snapshot.model_copy(update={
             "cycle_state": CycleState.CLOSED,
-            "conformance_result": ConformanceResult.CONFORMING,
+            "conformance_result": (
+                ConformanceResult.CONFORMING
+                if self.snapshot.conformance_result == ConformanceResult.UNKNOWN
+                else self.snapshot.conformance_result
+            ),
             "current_step_id": None,
         })
 
     def _abort(self, event: Event) -> None:
-        if not self._matches_active(event) or self.snapshot.cycle_state in {CycleState.IDLE, CycleState.CLOSED}:
-            self._late(event, "abort is late or does not match the active cycle")
+        if not self._admit_active(event):
+            return
+        if self.snapshot.cycle_state in {
+            CycleState.IDLE,
+            CycleState.CLOSED,
+            CycleState.AWAITING_DISPOSITION,
+        }:
+            if self.snapshot.cycle_state != CycleState.CLOSED:
+                self._late(event, "abort is late or cannot replace an established conformance result", "INVALID_TRANSITION")
             return
         self._snapshot = self.snapshot.model_copy(update={
             "cycle_state": CycleState.CLOSED,
@@ -207,20 +260,29 @@ class SopEngine:
         })
 
     def _timeout(self, event: Event) -> None:
-        if not self._matches_active(event) or self.snapshot.cycle_state != CycleState.RUNNING:
+        if not self._admit_active(event):
+            return
+        if self.snapshot.cycle_state != CycleState.RUNNING:
             self._late(event, "STEP_TIMEOUT is late or does not match the active cycle")
             return
         self._nonconforming("STEP_TIMEOUT", f"step {event.step_id or 'unknown'} timed out")
 
     def _resume(self, event: Event) -> None:
-        if not self._matches_active(event) or self.snapshot.cycle_state != CycleState.ON_HOLD:
+        if not self._admit_active(event):
+            return
+        if self.snapshot.cycle_state != CycleState.ON_HOLD:
             self._late(event, "CYCLE_RESUMED requires an active held cycle")
             return
+        if self._has_unusable_required_evidence(event.ingested_at):
+            self._add_alarm(AlarmDomain.PROCESS, "REVALIDATION_FAILED", "held evidence remains ineligible")
+            return
         self._snapshot = self.snapshot.model_copy(update={"cycle_state": CycleState.RUNNING})
-        self._reconcile()
+        self._reconcile(event.ingested_at)
 
     def _disposition(self, event: Event) -> None:
-        if not self._matches_active(event) or self.snapshot.cycle_state != CycleState.AWAITING_DISPOSITION:
+        if not self._admit_active(event):
+            return
+        if self.snapshot.cycle_state != CycleState.AWAITING_DISPOSITION:
             self._late(event, "disposition requires an awaiting-disposition cycle")
             return
         command = DispositionCommand.model_validate(event.payload.get("command"))
@@ -234,7 +296,6 @@ class SopEngine:
                 "rework_attempt": self.snapshot.rework_attempt + 1,
                 "current_step_id": self.sop.steps[0].step_id if self.sop.steps else None,
                 "completed_step_ids": (),
-                "evidence": (),
             })
             return
         self._snapshot = self.snapshot.model_copy(update={
@@ -243,11 +304,11 @@ class SopEngine:
             "current_step_id": None,
         })
 
-    def _reconcile(self) -> None:
+    def _reconcile(self, decision_time: datetime) -> None:
         if self.snapshot.cycle_state != CycleState.RUNNING:
             return
         step = self._current_step()
-        if step is None or not all(self._has_requirement(requirement) for requirement in step.required):
+        if step is None or not all(self._has_requirement(requirement, decision_time) for requirement in step.required):
             return
         complete = self.snapshot.completed_step_ids + (step.step_id,)
         next_step = self.sop.steps[len(complete)] if len(complete) < len(self.sop.steps) else None
@@ -256,14 +317,33 @@ class SopEngine:
             "current_step_id": next_step.step_id if next_step else None,
         })
 
-    def _has_requirement(self, requirement: EvidenceRequirement) -> bool:
+    def _has_requirement(self, requirement: EvidenceRequirement, decision_time: datetime) -> bool:
         return any(
-            evidence.key == requirement.key
-            and evidence.kind == requirement.kind
-            and evidence.value == requirement.expected_value
-            and evidence.quality == EvidenceQuality.VALID
+            self._is_decision_eligible(evidence, requirement, decision_time)
             for evidence in self.snapshot.evidence
         )
+
+    def _all_completed_requirements_valid(self, decision_time: datetime) -> bool:
+        return all(
+            self._has_requirement(requirement, decision_time)
+            for step in self.sop.steps
+            for requirement in step.required
+        )
+
+    def _has_unusable_required_evidence(self, decision_time: datetime) -> bool:
+        step = self._current_step()
+        if step is None:
+            return False
+        for requirement in step.required:
+            candidates = [
+                item for item in self.snapshot.evidence
+                if item.attempt == self.snapshot.rework_attempt
+                and item.key == requirement.key
+                and item.kind == requirement.kind
+            ]
+            if candidates and not any(self._is_decision_eligible(item, requirement, decision_time) for item in candidates):
+                return True
+        return False
 
     def _current_step(self) -> SopStep | None:
         index = len(self.snapshot.completed_step_ids)
@@ -285,17 +365,74 @@ class SopEngine:
             and event.ingested_at - evidence.occurred_at <= timedelta(seconds=freshness)
         )
 
+    def _is_decision_eligible(
+        self,
+        evidence: Evidence,
+        requirement: EvidenceRequirement,
+        decision_time: datetime,
+    ) -> bool:
+        return (
+            evidence.cycle_id == self.snapshot.cycle_id
+            and evidence.runtime_bundle_id == self.snapshot.runtime_bundle_id
+            and evidence.attempt == self.snapshot.rework_attempt
+            and evidence.key == requirement.key
+            and evidence.kind == requirement.kind
+            and evidence.value == requirement.expected_value
+            and evidence.quality == EvidenceQuality.VALID
+            and evidence.valid_from <= evidence.occurred_at <= evidence.valid_until
+            and evidence.occurred_at <= decision_time <= evidence.valid_until
+            and decision_time - evidence.occurred_at <= timedelta(seconds=requirement.freshness_seconds)
+        )
+
     def _conflicts(self, candidate: Evidence) -> bool:
         return any(
             existing.evidence_id != candidate.evidence_id
+            and existing.attempt == candidate.attempt
             and existing.key == candidate.key
             and existing.kind == candidate.kind
             and existing.value != candidate.value
             for existing in self.snapshot.evidence
         )
 
-    def _matches_active(self, event: Event) -> bool:
+    def _matches_cycle(self, event: Event) -> bool:
         return event.cycle_id is not None and event.cycle_id == self.snapshot.cycle_id
+
+    def _admit_active(self, event: Event) -> bool:
+        if not self._matches_cycle(event):
+            self._late(event, "event does not match the active cycle")
+            return False
+        if self.snapshot.runtime_bundle_id is None or event.runtime_bundle_id != self.snapshot.runtime_bundle_id:
+            self._bundle_mismatch(event)
+            return False
+        return True
+
+    def _accepts_ordering(self, event: Event) -> bool:
+        watermark = self._source_watermarks.get(event.source_instance)
+        if watermark is not None:
+            last_sequence, last_occurred_at = watermark
+            if event.source_seq <= last_sequence:
+                self._late(event, "source sequence is not monotonic", "OUT_OF_ORDER_SEQUENCE")
+                return False
+            if event.occurred_at < last_occurred_at - self.lateness_window:
+                self._late(event, "event occurred outside the lateness window", "LATE_EVENT")
+                return False
+            self._source_watermarks[event.source_instance] = (event.source_seq, max(last_occurred_at, event.occurred_at))
+            return True
+        self._source_watermarks[event.source_instance] = (event.source_seq, event.occurred_at)
+        return True
+
+    def _recovery_hold(self, event: Event) -> None:
+        if not self._matches_cycle(event) or self.snapshot.cycle_state not in {CycleState.ARMED, CycleState.RUNNING}:
+            return
+        if self.snapshot.runtime_bundle_id is not None and event.runtime_bundle_id != self.snapshot.runtime_bundle_id:
+            self._bundle_mismatch(event)
+            return
+        self._hold("RECOVERY_REQUIRES_REVIEW", "active cycle was recovered from WAL")
+
+    def _bundle_mismatch(self, event: Event) -> None:
+        self._add_alarm(AlarmDomain.PROCESS, "RUNTIME_BUNDLE_MISMATCH", "event does not match the frozen Runtime Bundle")
+        if self.snapshot.cycle_state in {CycleState.ARMED, CycleState.RUNNING, CycleState.ON_HOLD}:
+            self._snapshot = self.snapshot.model_copy(update={"cycle_state": CycleState.ON_HOLD})
 
     def _hold(self, code: str, message: str, evidence: Evidence | None = None) -> None:
         if self.snapshot.cycle_state in {CycleState.IDLE, CycleState.CLOSED, CycleState.AWAITING_DISPOSITION}:
@@ -310,8 +447,8 @@ class SopEngine:
         })
         self._add_alarm(AlarmDomain.PROCESS, code, message, evidence)
 
-    def _late(self, event: Event, message: str) -> None:
-        self._add_alarm(AlarmDomain.SYSTEM, "LATE_EVENT", message)
+    def _late(self, event: Event, message: str, code: str = "LATE_EVENT") -> None:
+        self._add_alarm(AlarmDomain.SYSTEM, code, message)
 
     def _add_alarm(self, domain: AlarmDomain, code: str, message: str, evidence: Evidence | None = None) -> None:
         alarm = Alarm(
