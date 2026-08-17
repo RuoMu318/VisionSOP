@@ -74,6 +74,26 @@ test('station and configuration expose the camera-only visual boundary', async (
   await expect(page.getByText('device Adapter', { exact: true })).not.toBeVisible()
 })
 
+test('station renders the USB camera stream when the runtime reports a live camera', async ({ page, request }) => {
+  const response = await request.get('/api/v1/stations/ST01/snapshot')
+  const snapshot = await response.json()
+  snapshot.health.camera = 'ONLINE'
+  snapshot.video = {
+    kind: 'USB_MJPEG',
+    status: 'ONLINE',
+    stream_url: '/api/v1/cameras/ST01/stream.mjpg',
+    snapshot_url: '/api/v1/cameras/ST01/snapshot.jpg',
+  }
+  await page.route('**/api/v1/stations/ST01/snapshot', (route) => route.fulfill({ json: snapshot }))
+  await page.routeWebSocket('**/ws/v1/stations/ST01', (socket) => socket.send(JSON.stringify(snapshot)))
+
+  await page.goto('/station')
+
+  await expect(page.getByLabel('ST01 USB 摄像头画面')).toBeVisible()
+  await expect(page.getByLabel('ST01 USB 摄像头画面')).toHaveAttribute('src', '/api/v1/cameras/ST01/stream.mjpg')
+  await expect(page.getByLabel('ST01 模拟相机画面')).not.toBeVisible()
+})
+
 test('alarm workflow links to cycle evidence detail', async ({ page }) => {
   await page.goto('/station')
   await runScenario(page, '明确工艺 NG')

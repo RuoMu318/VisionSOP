@@ -6,7 +6,7 @@
 
 > V1.4 将交付分为 P0 Software Foundation 与 M0-M6 Camera Field Integration。P0 可在没有相机或现场数据时完成；当前现场 V1 只接入一台固定工业相机。PLC、扫码枪、电批和传感器的 Adapter Contract 保留为后续扩展，但不绑定当前 Runtime Bundle，也不作为当前验收前提。
 
-> 当前代码状态必须如实区分：P0 只有 `simulated-vision`，尚无真实检测算法；摄像头接入、模型训练和 DeepStream/TensorRT 部署属于 M0-M6。接入摄像头本身只能获得视频，完成模型接入并通过 Shadow 验收后才能输出视觉检测结果。
+> 当前代码状态必须如实区分：P0 已实现并在本机验证 USB OpenCV 的实时取帧、JPEG 快照、MJPEG 预览和相机健康状态，但视觉 Evidence 仍只有 `simulated-vision`，尚无真实检测算法。接入摄像头本身只能获得视频，完成模型接入并通过 Shadow 验收后才能输出视觉检测结果。Windows OpenCV 仅用于开发接入；正式 Ubuntu/NVIDIA 部署仍采用 DeepStream/TensorRT。
 
 ## 1. 交付决策
 
@@ -315,14 +315,14 @@ MMAction2 仅作为训练、验证和导出框架。生产部署优先走单一 
 
 ### 6.1.1 当前实现状态与 GitHub 借鉴
 
-当前提交中的 `simulated-vision` 只生成确定性的测试 Evidence，不读取真实画面，也不包含已训练权重。真实检测按以下链路实施：
+当前提交中的 `simulated-vision` 只生成确定性的测试 Evidence，不读取真实画面，也不包含已训练权重。USB OpenCV 已接入实时预览、JPEG 快照、MJPEG 流和相机健康状态，但不产生 Evidence。真实检测按以下链路实施：
 
 | 检测任务 | 算法路线 | 借鉴仓库 | 当前状态 |
 | --- | --- | --- | --- |
 | 工件、工具、垫片、螺丝检测 | 目标检测/实例分割，固定 ROI + Tracking | [Ultralytics](https://github.com/ultralytics/ultralytics)，或许可审查通过后的 [MMDetection](https://github.com/open-mmlab/mmdetection) + RTMDet | 未实现，等待现场数据与许可决策 |
 | 产品在治具、垫片存在、螺丝存在、产品移除 | 检测/分类/分割 + Temporal Filter | 同上；[IndustReal](https://github.com/TimSchoonbeek/IndustReal) 用于标注设计参考 | 未实现 |
 | 拿取、放置、插入、锁紧动作 | 视频动作识别/时序窗口 | [MMAction2](https://github.com/open-mmlab/mmaction2) | 未实现 |
-| 视频采集、GPU 解码、推理、Tracking、ROI、录像 | DeepStream + TensorRT + GStreamer | [NVIDIA DeepStream](https://github.com/NVIDIA/DeepStream)；[DeepStream Python Apps](https://github.com/NVIDIA-AI-IOT/deepstream_python_apps) 仅作示例参考 | 未实现 |
+| 视频采集、GPU 解码、推理、Tracking、ROI、录像 | 开发环境使用 OpenCV USB 预览；正式部署使用 DeepStream + TensorRT + GStreamer | [NVIDIA DeepStream](https://github.com/NVIDIA/DeepStream)；[DeepStream Python Apps](https://github.com/NVIDIA-AI-IOT/deepstream_python_apps) 仅作示例参考 | USB 预览已实现；正式 DeepStream 未实现 |
 | 步骤真正完成、装配差异、未知异常 | 后续增强 | STORM-PSR、StateDiffNet、AMNAR | 不进入当前 V1 判定链路 |
 
 正式模型必须使用目标工位采集的数据训练和验收。开源数据集与代码只能提供算法、标注和工程参考，不能替代现场样本，也不能在未完成许可证和权重条款审查时进入商业交付。

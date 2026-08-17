@@ -7,8 +7,11 @@ field_device_scope:
   camera_only: true
 
 camera:
-  adapter: simulated
-  profile: camera-profile-p0
+  adapter: usb-opencv
+  device_index: 0
+  resolution: 1280x720
+  fps: 15
+  profile: usb-camera-profile-st01
 
 model:
   adapter: simulated-vision

@@ -30,7 +30,7 @@ import {
   message,
 } from 'antd'
 import { useMemo, useState } from 'react'
-import { SimulatedFeed } from '../components/SimulatedFeed'
+import { CameraFeed } from '../components/CameraFeed'
 import { ConformanceTag, LifecycleTag } from '../components/Status'
 import { useStation } from '../hooks/useStation'
 import type { AlarmView, Disposition, EvidenceView } from '../types'
@@ -103,6 +103,9 @@ export function StationPage() {
   const data = station.data
   const currentStep = data.steps.find((item) => item.id === data.cycle.current_step_id)
   const connectionColor = station.connection === 'LIVE' ? 'success' : station.connection === 'STALE' ? 'warning' : 'error'
+  const liveCamera = data.video.kind === 'USB_MJPEG'
+  const cameraOnline = data.video.status === 'ONLINE'
+  const modelReady = data.health.model.endsWith('READY')
 
   const run = async () => {
     setRunning(true)
@@ -185,10 +188,10 @@ export function StationPage() {
       <div className="station-workspace">
         <section className="video-section">
           <div className="panel-heading">
-            <div><VideoCameraOutlined /><strong> 视觉相机 CAM-01</strong></div>
-            <Tag color="success">ONLINE · 25 FPS</Tag>
+            <div><VideoCameraOutlined /><strong>{liveCamera ? 'USB 摄像头 CAM-01' : '模拟视觉相机 CAM-01'}</strong></div>
+            <Tag color={cameraOnline ? 'success' : 'warning'}>{data.video.status}{cameraOnline ? ' · 15 FPS' : ''}</Tag>
           </div>
-          <div className="feed-frame"><SimulatedFeed snapshot={data} /></div>
+          <div className="feed-frame"><CameraFeed snapshot={data} /></div>
           <div className="action-bar">
             <div>
               <span>当前步骤</span>
@@ -196,7 +199,7 @@ export function StationPage() {
             </div>
             <div>
               <span>视觉动作</span>
-              <strong>{currentStep ? 'simulated_action' : '—'} <small>{currentStep ? '96%' : ''}</small></strong>
+              <strong>{currentStep ? (modelReady ? 'simulated_action' : '视觉模型未接入') : '—'} <small>{currentStep && modelReady ? '96%' : ''}</small></strong>
             </div>
             <Progress percent={data.cycle.progress_percent} size="small" status={data.cycle.conformance === 'NONCONFORMING' ? 'exception' : 'active'} />
           </div>

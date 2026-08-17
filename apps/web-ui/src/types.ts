@@ -18,7 +18,12 @@ export interface StationSnapshot {
   alarms: AlarmView[]
   evidence_assets: EvidenceAsset[]
   health: Record<string, string>
-  video: { kind: string; status: string; stream_url: string | null }
+  video: {
+    kind: string
+    status: string
+    stream_url: string | null
+    snapshot_url: string | null
+  }
   updated_at: string
 }
 

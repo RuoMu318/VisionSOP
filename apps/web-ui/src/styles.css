@@ -61,7 +61,8 @@ h1 { margin: 2px 0 7px; color: #1d2523; font-size: 23px; line-height: 1.25; lett
 .panel-heading strong { font-size: 13px; }
 .panel-heading > span { color: #7a8582; }
 .feed-frame { position: relative; width: 100%; aspect-ratio: 16 / 8.4; min-height: 300px; background: #1b2224; overflow: hidden; }
-.simulated-feed { display: block; width: 100%; height: 100%; }
+.simulated-feed, .usb-camera-feed { display: block; width: 100%; height: 100%; }
+.usb-camera-feed { object-fit: contain; background: #101516; }
 .action-bar { min-height: 66px; padding: 10px 13px; display: grid; grid-template-columns: 1fr 1fr minmax(150px, .8fr); align-items: center; gap: 14px; border-top: 1px solid #343d3f; background: #252d2f; color: #fff; }
 .action-bar > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .action-bar span { color: #aeb9b7; font-size: 11px; }

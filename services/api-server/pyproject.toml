@@ -9,6 +9,7 @@ description = "P0 API and persistence service for the industrial SOP platform"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.116,<1",
+  "opencv-python-headless>=4.11,<5",
   "pydantic>=2.7,<3",
   "sqlalchemy>=2.0,<3",
   "uvicorn[standard]>=0.35,<1",

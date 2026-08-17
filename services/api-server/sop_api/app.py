@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 
 from core_runtime import DispositionCommand
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response, StreamingResponse
 
+from .camera import CameraRuntime, create_camera_runtime
 from .config import Settings
 from .db import create_schema, create_session_factory
 from .orchestrator import SCENARIOS, StationOrchestrator
@@ -16,17 +19,25 @@ from .repository import Repository
 from .schemas import AcknowledgeRequest, DispositionRequest, ResetRequest
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    camera_factory: Callable[[Settings], CameraRuntime] | None = None,
+) -> FastAPI:
     resolved = settings or Settings.from_env()
     resolved.data_dir.mkdir(parents=True, exist_ok=True)
     factory = create_session_factory(resolved.database_url)
     create_schema(factory)
     repository = Repository(factory)
-    orchestrator = StationOrchestrator(resolved, repository)
+    camera: CameraRuntime = (camera_factory or create_camera_runtime)(resolved)
+    orchestrator = StationOrchestrator(resolved, repository, camera)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        yield
+        camera.start()
+        try:
+            yield
+        finally:
+            camera.close()
 
     app = FastAPI(
         title="AI Production SOP Compliance Platform",
@@ -43,13 +54,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved
     app.state.repository = repository
     app.state.orchestrator = orchestrator
+    app.state.camera = camera
 
     @app.get("/api/v1/health")
     def health() -> dict:
         return {
             "status": "ok", "version": app.version, "mode": resolved.runtime_mode.value,
             "database": "sqlite" if resolved.database_url.startswith("sqlite") else "postgresql",
-            "hardware": "simulated",
+            "hardware": camera.adapter_name,
         }
 
     @app.get("/api/v1/stations")
@@ -107,6 +119,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if row is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "evidence asset not found")
         return orchestrator._asset_view(row)
+
+    @app.get("/api/v1/cameras/{station_id}/snapshot.jpg")
+    def camera_snapshot(station_id: str) -> Response:
+        if station_id != resolved.station_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "station not found")
+        jpeg = camera.snapshot_jpeg()
+        if jpeg is None:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "camera frame unavailable")
+        return Response(content=jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/v1/cameras/{station_id}/stream.mjpg")
+    def camera_stream(station_id: str) -> StreamingResponse:
+        if station_id != resolved.station_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "station not found")
+        if camera.snapshot_jpeg() is None:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "camera frame unavailable")
+        return StreamingResponse(
+            camera.mjpeg(),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/api/v1/sops/{sop_id}/versions/{version}")
     def sop_version(sop_id: str, version: str) -> dict:

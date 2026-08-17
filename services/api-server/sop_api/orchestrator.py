@@ -27,6 +27,7 @@ from core_runtime import (
 )
 from core_runtime.adapters import LocalEvidenceAdapter
 
+from .camera import CameraRuntime
 from .config import Settings
 from .repository import Repository
 
@@ -75,11 +76,11 @@ class EventTimeReorderBuffer:
         return OrderedBatch(tuple(eligible + late), len(late))
 
 
-def build_bundle() -> RuntimeBundle:
+def build_bundle(camera_adapter: str = "simulated") -> RuntimeBundle:
     return RuntimeBundle(
         bundle_id="ST01-P0-R02", revision="R02", sop_version="1.1",
         configuration=(
-            ("camera", "simulated"),
+            ("camera", camera_adapter),
             ("evidence", "local"),
             ("model", "simulated-vision"),
         ),
@@ -105,10 +106,11 @@ def build_sop() -> SopDefinition:
 
 
 class StationOrchestrator:
-    def __init__(self, settings: Settings, repository: Repository) -> None:
+    def __init__(self, settings: Settings, repository: Repository, camera: CameraRuntime) -> None:
         self.settings = settings
         self.repository = repository
-        self.bundle = build_bundle()
+        self.camera = camera
+        self.bundle = build_bundle(camera.adapter_name)
         self.sop = build_sop()
         self.reorder = EventTimeReorderBuffer(settings.event_lateness_seconds)
         self._engine: SopEngine | None = None
@@ -321,6 +323,8 @@ class StationOrchestrator:
         database_health = "UNAVAILABLE" if any(
             alarm["code"] == "DATABASE_UNAVAILABLE" for alarm in alarms
         ) else "ONLINE"
+        camera = self.camera.view(station_id)
+        model_health = "SIMULATED_READY" if camera.adapter == "simulated" else "NOT_CONFIGURED"
         return {
             "station": {
                 "station_id": station.station_id, "name": station.name, "online": station.online,
@@ -338,10 +342,15 @@ class StationOrchestrator:
             "alarms": alarms,
             "evidence_assets": assets,
             "health": {
-                "camera": "SIMULATED_ONLINE", "model": "SIMULATED_READY",
+                "camera": camera.status, "model": model_health,
                 "database": database_health,
             },
-            "video": {"kind": "SIMULATED", "status": "ONLINE", "stream_url": None},
+            "video": {
+                "kind": camera.kind,
+                "status": camera.status,
+                "stream_url": camera.stream_url,
+                "snapshot_url": camera.snapshot_url,
+            },
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
 

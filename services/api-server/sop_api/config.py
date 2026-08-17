@@ -17,6 +17,11 @@ class Settings:
     station_id: str = "ST01"
     station_name: str = "装配工位 01"
     event_lateness_seconds: int = 5
+    camera_mode: str = "SIMULATED"
+    camera_index: int = 0
+    camera_width: int = 1280
+    camera_height: int = 720
+    camera_fps: int = 15
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -30,4 +35,9 @@ class Settings:
             station_id=os.getenv("STATION_ID", "ST01"),
             station_name=os.getenv("STATION_NAME", "装配工位 01"),
             event_lateness_seconds=int(os.getenv("EVENT_LATENESS_SECONDS", "5")),
+            camera_mode=os.getenv("CAMERA_MODE", "SIMULATED").upper(),
+            camera_index=int(os.getenv("CAMERA_INDEX", "0")),
+            camera_width=int(os.getenv("CAMERA_WIDTH", "1280")),
+            camera_height=int(os.getenv("CAMERA_HEIGHT", "720")),
+            camera_fps=int(os.getenv("CAMERA_FPS", "15")),
         )

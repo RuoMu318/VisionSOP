@@ -46,6 +46,26 @@ def test_health_and_initial_station_are_software_only(client):
     assert len(station["steps"]) == 6
 
 
+def test_usb_camera_mode_exposes_unavailable_camera_without_synthetic_video(monkeypatch, tmp_path):
+    monkeypatch.setenv("SOP_DATA_DIR", str(tmp_path / "camera-runtime"))
+    monkeypatch.setenv("CAMERA_MODE", "USB")
+    monkeypatch.setenv("CAMERA_INDEX", "999")
+
+    with TestClient(create_app(Settings.from_env())) as client:
+        station = client.get("/api/v1/stations/ST01/snapshot").json()
+        snapshot = client.get("/api/v1/cameras/ST01/snapshot.jpg")
+
+    assert station["health"]["camera"] == "UNAVAILABLE"
+    assert station["health"]["model"] == "NOT_CONFIGURED"
+    assert station["video"] == {
+        "kind": "USB_MJPEG",
+        "status": "UNAVAILABLE",
+        "stream_url": "/api/v1/cameras/ST01/stream.mjpg",
+        "snapshot_url": "/api/v1/cameras/ST01/snapshot.jpg",
+    }
+    assert snapshot.status_code == 503
+
+
 def test_runtime_bundle_exposes_camera_as_the_only_field_device(client):
     station = client.get("/api/v1/stations/ST01/snapshot").json()
 
