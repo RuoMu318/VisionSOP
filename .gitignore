@@ -13,9 +13,11 @@ dist/
 .playwright/
 .playwright-cli/
 output/
+third_party/
 *.db
 *.sqlite3
 data/evidence/
 data/wal/
+data/models/
 .env
 !.env.example

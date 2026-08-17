@@ -34,9 +34,11 @@ The API validates the SOP binding before a recipe can be saved. Publishing archi
 
 ## Current Runtime
 
-`fixture-occupancy-cv-v1` is the only active built-in recognizer. It compares a current ROI with a captured empty-scene reference and applies the generic `change_min`, `confidence_min`, `confirm_frames`, `lost_frames`, and `cooldown_ms` settings. It is suitable only for a fixed camera, fixture, illumination, and product presentation.
+`fixture-occupancy-cv-v1` is a built-in recognizer. It compares a current ROI with a captured empty-scene reference and applies the generic `change_min`, `confidence_min`, `confirm_frames`, `lost_frames`, and `cooldown_ms` settings. It is suitable only for a fixed camera, fixture, illumination, and product presentation.
 
-No RTMDet/MMDetection, ONNX, TensorRT, DeepStream, MMAction2, trained product model, or production Shadow acceptance result is present yet. Any configured deep-learning recipe returns `MODEL_NOT_DEPLOYED`, and an uncalibrated classic recipe returns `CALIBRATION_REQUIRED`.
+`ultralytics-yolo11n-coco-v1` is installed as a local CPU object-detection adapter. The official `yolo11n.pt` COCO weight is stored outside Git under `data/models/ultralytics/`. It performs real inference only for its published COCO classes, applies the selected class, ROI, count, confidence, and temporal rule, and emits an event only after confirmation. It does not recognise a factory-specific product, washer, screw, fixture, or correct assembly state.
+
+RTMDet/MMDetection, ONNX, TensorRT, DeepStream, MMAction2, a trained industrial model, and production Shadow acceptance are still absent. Any configured recognizer without a deployed adapter returns `MODEL_NOT_DEPLOYED`; an unavailable YOLO weight returns `MODEL_WEIGHTS_REQUIRED`; and an uncalibrated classic recipe returns `CALIBRATION_REQUIRED`.
 
 ## First Recipe
 

@@ -150,4 +150,15 @@ BUILT_IN_MODELS = (
         recognizer_types=(RecognizerType.CLASSICAL_CV,),
         deployment_status="BUILT_IN",
     ),
+    VisionModelView(
+        model_id="ultralytics-yolo11n-coco-v1",
+        name="YOLO11n COCO object detector",
+        framework="Ultralytics YOLO11",
+        recognizer_types=(RecognizerType.OBJECT_DETECTION,),
+        classes=(
+            "person", "bicycle", "car", "motorcycle", "bus", "truck", "bottle", "cup",
+            "fork", "knife", "spoon", "scissors", "cell phone", "backpack", "handbag",
+        ),
+        deployment_status="INSTALLED_LOCAL_CPU",
+    ),
 )

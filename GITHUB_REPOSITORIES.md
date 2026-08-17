@@ -2,9 +2,17 @@
 
 > 本清单以项目已核验的仓库为准。它是技术选型和研究的登记表，不代表全部会被直接合并、镜像或部署到产品中。
 
-> 当前 `ST01-P0-R03` 已实现 Windows OpenCV USB 摄像头预览、JPEG 快照、MJPEG 流、健康状态和版本化 Vision Recipe Engine。内置 `fixture-occupancy-cv-v1` 是可标定的通用传统视觉基线；它不等同于已训练的产品检测模型。DeepStream、TensorRT、YOLO、MMDetection/RTMDet 和 MMAction2 的运行时与模型权重尚未集成。引入任何模型前必须完成许可证审查、版本冻结、目标工位数据训练、ONNX/TensorRT 导出与 Shadow 验收。
+> 当前 `ST01-P0-R03` 已实现 Windows OpenCV USB 摄像头预览、JPEG 快照、MJPEG 流、健康状态和版本化 Vision Recipe Engine。内置 `fixture-occupancy-cv-v1` 是可标定的传统视觉基线；[Ultralytics](https://github.com/ultralytics/ultralytics) 已以固定源码提交 `cb8f42c` 安装，并已接入 `ultralytics-yolo11n-coco-v1` 本地 CPU 推理适配器。它使用官方 COCO 权重执行真实检测，但不包含本工位产品、垫片、螺丝或治具类别。DeepStream、TensorRT、MMDetection/RTMDet 和 MMAction2 仍未接入。引入任何工业模型前必须完成许可证审查、版本冻结、目标工位数据训练、ONNX/TensorRT 导出与 Shadow 验收。
 
 ## 1. 产品核心与优先级
+
+### 当前已接入
+
+| 仓库 | 本机状态 | 当前作用 | 不具备的能力 |
+| --- | --- | --- | --- |
+| [Ultralytics](https://github.com/ultralytics/ultralytics) | 已浅克隆到忽略目录 `third_party/ultralytics`，commit `cb8f42c`；已安装到项目 `.venv`。 | YOLO11n COCO 对真实 USB 相机帧的目标检测，输出经过 Recipe 的 ROI、数量和时序过滤。 | 不能识别未训练的工厂产品、垫片、螺丝、治具或装配正确性。 |
+
+其余列出的仓库不应被同时塞入当前运行进程：它们覆盖互斥的训练/推理框架、数据集和 V3/V4 研究功能，且部分仅支持 Ubuntu/NVIDIA 环境。它们会在对应阶段经许可证、模型、现场数据和基准测试验证后单独接入。
 
 | 优先级 | 仓库 | 产品角色 | 使用阶段 |
 | --- | --- | --- | --- |
