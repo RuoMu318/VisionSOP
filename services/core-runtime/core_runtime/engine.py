@@ -147,6 +147,8 @@ class SopEngine:
             self._start(event)
         elif event.event_type == "EVIDENCE":
             self._accept_evidence(event)
+        elif event.event_type == "OBJECT_STATE_CONFIRMED":
+            self._accept_object_state(event)
         elif event.event_type == "CYCLE_END":
             self._end(event)
         elif event.event_type in {"CYCLE_ABORTED", "CYCLE_CANCELLED"}:
@@ -190,17 +192,68 @@ class SopEngine:
         })
         self._started_at = event.occurred_at
 
-    def _accept_evidence(self, event: Event) -> None:
+    def _accept_object_state(self, event: Event) -> None:
+        """Normalize the AI Runtime's state contract into immutable Evidence.
+
+        The original OBJECT_STATE_CONFIRMED event remains in the WAL. The
+        derived Evidence exists only in the state projection consumed by SOP
+        rules, so recognizer implementations do not have to know SOP internals.
+        """
+        if not self._admit_active(event):
+            return
+        state = event.payload.get("state")
+        confidence = event.payload.get("confidence")
+        value = event.payload.get("value", True)
+        valid_for_seconds = event.payload.get("valid_for_seconds", 30)
+        if (
+            not isinstance(state, str)
+            or not state
+            or not isinstance(event.step_id, str)
+            or not isinstance(value, bool)
+            or not isinstance(confidence, (float, int))
+            or not 0 <= float(confidence) <= 1
+            or not isinstance(valid_for_seconds, int)
+            or not 1 <= valid_for_seconds <= 600
+        ):
+            self._hold("INVALID_VISION_EVENT", "OBJECT_STATE_CONFIRMED payload is invalid")
+            return
+        evidence = Evidence(
+            evidence_id=event.event_id,
+            cycle_id=event.cycle_id or "",
+            step_id=event.step_id,
+            key=state,
+            kind=EvidenceKind.STATE,
+            value=value,
+            occurred_at=event.occurred_at,
+            valid_from=event.occurred_at,
+            valid_until=event.occurred_at + timedelta(seconds=valid_for_seconds),
+            source_seq=event.source_seq,
+            source=event.source,
+            model_version=event.payload.get("model_version") if isinstance(event.payload.get("model_version"), str) else None,
+            confidence=float(confidence),
+            metadata={
+                key: value for key, value in event.payload.items()
+                if key not in {"state", "value", "confidence", "valid_for_seconds", "model_version"}
+            },
+            runtime_bundle_id=event.runtime_bundle_id or "",
+            attempt=self.snapshot.rework_attempt,
+        )
+        self._accept_evidence(event, evidence)
+
+    def _accept_evidence(self, event: Event, normalized: Evidence | None = None) -> None:
         if not self._admit_active(event):
             return
         if self.snapshot.cycle_state not in {CycleState.RUNNING, CycleState.ON_HOLD}:
             self._late(event, "evidence is late for the active cycle")
             return
-        evidence_data = event.payload.get("evidence")
-        if not isinstance(evidence_data, dict):
-            self._hold("INVALID_EVIDENCE", "EVIDENCE requires an evidence payload")
-            return
-        evidence = Evidence.model_validate(evidence_data)
+        if normalized is None:
+            evidence_data = event.payload.get("evidence")
+            if not isinstance(evidence_data, dict):
+                self._hold("INVALID_EVIDENCE", "EVIDENCE requires an evidence payload")
+                return
+            evidence = Evidence.model_validate(evidence_data)
+        else:
+            evidence = normalized
         retained = self.snapshot.evidence + (evidence,)
         self._snapshot = self.snapshot.model_copy(update={"evidence": retained})
         if (

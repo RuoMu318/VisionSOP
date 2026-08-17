@@ -2,7 +2,7 @@
 
 Source contract: `V1_IMPLEMENTATION_PLAN.md` V1.4 Camera-only amendment.
 
-Current Runtime Bundle `ST01-P0-R02` binds only simulated Camera/Model/Evidence adapters. `SimulatedDeviceAdapter` remains a contract-test fixture for future expansion and is not an active field device.
+Current Runtime Bundle `ST01-P0-R03` adds the versioned Vision Recipe configuration/runtime contract. The only built-in recognizer is the calibrated `fixture-occupancy-cv-v1` OpenCV baseline; no trained object/action model is deployed. `SimulatedDeviceAdapter` remains a contract-test fixture for future expansion and is not an active field device.
 
 ## Global Constraints
 

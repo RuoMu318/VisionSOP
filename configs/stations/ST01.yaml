@@ -1,7 +1,7 @@
 station_id: ST01
 name: Assembly Station 01
 runtime_mode: SIMULATION
-runtime_bundle: ST01-P0-R02
+runtime_bundle: ST01-P0-R03
 
 field_device_scope:
   camera_only: true
@@ -14,8 +14,8 @@ camera:
   profile: usb-camera-profile-st01
 
 model:
-  adapter: simulated-vision
-  profile: visual-model-profile-p0
+  adapter: vision-recipe-runtime
+  profile: vision-recipe-profile-r03
 
 ingress:
   event_lateness_seconds: 5

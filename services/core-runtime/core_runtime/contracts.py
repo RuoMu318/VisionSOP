@@ -100,6 +100,10 @@ class Evidence(BaseModel):
     valid_from: datetime
     valid_until: datetime
     source_seq: int = Field(ge=1)
+    source: str = "unknown"
+    model_version: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     quality: EvidenceQuality = EvidenceQuality.VALID
     runtime_bundle_id: str
     attempt: int = Field(default=0, ge=0)

@@ -21,7 +21,9 @@ from .models import (
     RuntimeBundleRow,
     SopVersionRow,
     StationRow,
+    VisionRecipeRow,
 )
+from .vision import RecipeStatus, VisionRecipe, VisionRecipeDraft
 
 
 class Repository:
@@ -189,6 +191,101 @@ class Repository:
             return db.scalar(select(SopVersionRow).where(
                 SopVersionRow.sop_id == sop_id, SopVersionRow.version == version,
             ))
+
+    def vision_recipes(self, station_id: str | None = None) -> list[VisionRecipe]:
+        with self.factory() as db:
+            query = select(VisionRecipeRow)
+            if station_id:
+                query = query.where(VisionRecipeRow.station_id == station_id)
+            rows = db.scalars(query.order_by(VisionRecipeRow.version.desc(), VisionRecipeRow.updated_at.desc()))
+            return [VisionRecipe.model_validate(row.definition) for row in rows]
+
+    def vision_recipe(self, template_id: str, version: int | None = None) -> VisionRecipe | None:
+        with self.factory() as db:
+            query = select(VisionRecipeRow).where(VisionRecipeRow.template_id == template_id)
+            if version is not None:
+                query = query.where(VisionRecipeRow.version == version)
+            row = db.scalar(query.order_by(VisionRecipeRow.version.desc()))
+            return VisionRecipe.model_validate(row.definition) if row else None
+
+    def create_vision_recipe(self, draft: VisionRecipeDraft) -> VisionRecipe:
+        with self.factory.begin() as db:
+            existing = db.scalar(select(VisionRecipeRow).where(VisionRecipeRow.template_id == draft.template_id))
+            if existing is not None:
+                raise ValueError("template_id already exists")
+            recipe = VisionRecipe(**draft.model_dump(), version=1, status=RecipeStatus.DRAFT)
+            db.add(VisionRecipeRow(
+                template_id=recipe.template_id, version=recipe.version, station_id=recipe.station_id,
+                status=recipe.status.value, definition=recipe.model_dump(mode="json"),
+            ))
+            self._audit_recipe(db, "VISION_RECIPE_CREATED", recipe)
+            return recipe
+
+    def update_vision_recipe(self, template_id: str, draft: VisionRecipeDraft) -> VisionRecipe:
+        if draft.template_id != template_id:
+            raise ValueError("template_id cannot be changed")
+        with self.factory.begin() as db:
+            row = db.scalar(select(VisionRecipeRow).where(
+                VisionRecipeRow.template_id == template_id,
+                VisionRecipeRow.status == RecipeStatus.DRAFT.value,
+            ).order_by(VisionRecipeRow.version.desc()))
+            if row is None:
+                raise ValueError("no editable draft exists; create a draft from the published version")
+            recipe = VisionRecipe(**draft.model_dump(), version=row.version, status=RecipeStatus.DRAFT)
+            row.definition = recipe.model_dump(mode="json")
+            row.station_id = recipe.station_id
+            row.updated_at = datetime.now(timezone.utc)
+            self._audit_recipe(db, "VISION_RECIPE_UPDATED", recipe)
+            return recipe
+
+    def create_vision_draft(self, template_id: str) -> VisionRecipe:
+        with self.factory.begin() as db:
+            rows = list(db.scalars(select(VisionRecipeRow).where(
+                VisionRecipeRow.template_id == template_id,
+            ).order_by(VisionRecipeRow.version.desc())))
+            if not rows:
+                raise LookupError(template_id)
+            if rows[0].status == RecipeStatus.DRAFT.value:
+                raise ValueError("an editable draft already exists")
+            base = VisionRecipe.model_validate(rows[0].definition)
+            recipe = VisionRecipe(**base.model_dump(exclude={"version", "status"}), version=base.version + 1, status=RecipeStatus.DRAFT)
+            db.add(VisionRecipeRow(
+                template_id=recipe.template_id, version=recipe.version, station_id=recipe.station_id,
+                status=recipe.status.value, definition=recipe.model_dump(mode="json"),
+            ))
+            self._audit_recipe(db, "VISION_RECIPE_DRAFT_CREATED", recipe)
+            return recipe
+
+    def publish_vision_recipe(self, template_id: str) -> VisionRecipe:
+        with self.factory.begin() as db:
+            draft = db.scalar(select(VisionRecipeRow).where(
+                VisionRecipeRow.template_id == template_id,
+                VisionRecipeRow.status == RecipeStatus.DRAFT.value,
+            ).order_by(VisionRecipeRow.version.desc()))
+            if draft is None:
+                raise ValueError("no draft is available to publish")
+            for row in db.scalars(select(VisionRecipeRow).where(
+                VisionRecipeRow.template_id == template_id,
+                VisionRecipeRow.status == RecipeStatus.PUBLISHED.value,
+            )):
+                archived = VisionRecipe.model_validate(row.definition).model_copy(update={"status": RecipeStatus.ARCHIVED})
+                row.status = RecipeStatus.ARCHIVED.value
+                row.definition = archived.model_dump(mode="json")
+                row.updated_at = datetime.now(timezone.utc)
+            recipe = VisionRecipe.model_validate(draft.definition).model_copy(update={"status": RecipeStatus.PUBLISHED})
+            draft.status = RecipeStatus.PUBLISHED.value
+            draft.definition = recipe.model_dump(mode="json")
+            draft.updated_at = datetime.now(timezone.utc)
+            self._audit_recipe(db, "VISION_RECIPE_PUBLISHED", recipe)
+            return recipe
+
+    @staticmethod
+    def _audit_recipe(db: Session, action: str, recipe: VisionRecipe) -> None:
+        db.add(AuditLogRow(
+            action=action, actor_id="vision-config", client_id="api-server",
+            target_type="vision_recipe", target_id=f"{recipe.template_id}:v{recipe.version}",
+            before_value=None, after_value=recipe.model_dump(mode="json"), reason=action.lower(),
+        ))
 
     def audit_count(self, action: str | None = None) -> int:
         with self.factory() as db:

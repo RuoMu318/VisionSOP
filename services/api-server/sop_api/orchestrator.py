@@ -7,6 +7,7 @@ import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Callable
 from uuid import uuid4
 
 from core_runtime import (
@@ -30,6 +31,7 @@ from core_runtime.adapters import LocalEvidenceAdapter
 from .camera import CameraRuntime
 from .config import Settings
 from .repository import Repository
+from .vision import VisionRecipe
 
 
 SCENARIOS = {"normal", "nonconforming", "hold", "system_hold", "aborted", "rework"}
@@ -78,11 +80,11 @@ class EventTimeReorderBuffer:
 
 def build_bundle(camera_adapter: str = "simulated") -> RuntimeBundle:
     return RuntimeBundle(
-        bundle_id="ST01-P0-R02", revision="R02", sop_version="1.1",
+        bundle_id="ST01-P0-R03", revision="R03", sop_version="1.1",
         configuration=(
             ("camera", camera_adapter),
             ("evidence", "local"),
-            ("model", "simulated-vision"),
+            ("model", "simulated-vision" if camera_adapter == "simulated" else "vision-recipe-runtime"),
         ),
     )
 
@@ -106,16 +108,24 @@ def build_sop() -> SopDefinition:
 
 
 class StationOrchestrator:
-    def __init__(self, settings: Settings, repository: Repository, camera: CameraRuntime) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        repository: Repository,
+        camera: CameraRuntime,
+        vision_health: Callable[[], str] | None = None,
+    ) -> None:
         self.settings = settings
         self.repository = repository
         self.camera = camera
+        self.vision_health = vision_health
         self.bundle = build_bundle(camera.adapter_name)
         self.sop = build_sop()
         self.reorder = EventTimeReorderBuffer(settings.event_lateness_seconds)
         self._engine: SopEngine | None = None
         self._scenario: str | None = None
         self._subscribers: set[asyncio.Queue[dict]] = set()
+        self._vision_sequences: dict[str, int] = {}
         self._seed()
 
     def _seed(self) -> None:
@@ -272,6 +282,49 @@ class StationOrchestrator:
         self.repository.add_disposition(command, before, after)
         return self.cycle_detail(cycle_id)
 
+    def ingest_vision_confirmation(self, recipe: VisionRecipe, payload: dict) -> bool:
+        """Accept one published Recipe result through the standard Event path.
+
+        A recipe may never move the state machine directly. It is ignored unless
+        its bound SOP step is the active step of the currently running cycle.
+        """
+        row = self.repository.current_cycle(self.settings.station_id)
+        if row is None:
+            return False
+        engine = self._load_engine(row.wal_path)
+        snapshot = engine.snapshot
+        if (
+            snapshot.cycle_state != CycleState.RUNNING
+            or snapshot.cycle_id is None
+            or snapshot.runtime_bundle_id != self.bundle.bundle_id
+            or recipe.sop_binding.sop_id != self.sop.sop_id
+            or recipe.sop_binding.step_id != snapshot.current_step_id
+        ):
+            return False
+        key = f"{recipe.camera_id}:{recipe.template_id}"
+        sequence = self._vision_sequences.get(key, 0) + 1
+        self._vision_sequences[key] = sequence
+        now = datetime.now(timezone.utc)
+        event = Event(
+            event_id=f"vision-{snapshot.cycle_id}-{recipe.template_id}-{sequence}",
+            event_type=recipe.output.event_type,
+            source="vision-recipe-runtime",
+            source_instance=key,
+            source_seq=sequence,
+            occurred_at=now,
+            ingested_at=now,
+            idempotency_key=f"{recipe.template_id}:v{recipe.version}:{sequence}",
+            cycle_id=snapshot.cycle_id,
+            step_id=recipe.sop_binding.step_id,
+            runtime_bundle_id=self.bundle.bundle_id,
+            payload=payload,
+        )
+        engine.ingest(event)
+        self._engine = engine
+        self._scenario = "vision-runtime"
+        self._persist_engine(engine, "vision-runtime", Path(row.wal_path))
+        return True
+
     def _load_engine(self, wal_path: str) -> SopEngine:
         if self._engine is not None and str(self._engine.wal.path) == wal_path:
             return self._engine
@@ -324,7 +377,9 @@ class StationOrchestrator:
             alarm["code"] == "DATABASE_UNAVAILABLE" for alarm in alarms
         ) else "ONLINE"
         camera = self.camera.view(station_id)
-        model_health = "SIMULATED_READY" if camera.adapter == "simulated" else "NOT_CONFIGURED"
+        model_health = "SIMULATED_READY" if camera.adapter == "simulated" else (
+            self.vision_health() if self.vision_health else "NOT_CONFIGURED"
+        )
         return {
             "station": {
                 "station_id": station.station_id, "name": station.name, "online": station.online,

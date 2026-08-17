@@ -121,6 +121,26 @@ h1 { margin: 2px 0 7px; color: #1d2523; font-size: 23px; line-height: 1.25; lett
 .config-detail .ant-select { min-width: 150px; }
 .config-note { padding: 12px; background: #f4f6f5; border-left: 3px solid #75817f; }
 
+.vision-editor-layout { display: grid; grid-template-columns: minmax(230px, .34fr) minmax(420px, .9fr) minmax(420px, .95fr); gap: 14px; align-items: start; }
+.vision-list-panel, .vision-canvas-panel, .vision-form-panel { min-width: 0; background: #fff; border: 1px solid #dce2df; border-radius: 5px; }
+.vision-list-panel .ant-empty { padding: 30px 10px; }
+.selected-row td { background: #eef7f2 !important; }
+.vision-canvas-panel { overflow: hidden; }
+.recipe-camera-canvas { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: #101516; touch-action: none; cursor: crosshair; }
+.recipe-camera-canvas .simulated-feed, .recipe-camera-canvas .usb-camera-feed { width: 100%; height: 100%; object-fit: contain; user-select: none; pointer-events: none; }
+.recipe-roi { position: absolute; border: 2px solid #4fc58c; background: rgba(79, 197, 140, .16); box-shadow: 0 0 0 999px rgba(8, 14, 13, .2); pointer-events: none; min-width: 1px; min-height: 1px; }
+.recipe-roi span { position: absolute; top: -23px; left: -2px; padding: 3px 6px; background: #18724b; color: #fff; font: 700 10px 'Cascadia Code', monospace; white-space: nowrap; }
+.recipe-camera-caption { position: absolute; inset: auto 0 0; padding: 7px 10px; display: flex; justify-content: space-between; gap: 8px; background: rgba(13, 21, 20, .82); color: #d9e4e0; font: 11px 'Cascadia Code', monospace; pointer-events: none; }
+.vision-canvas-actions { min-height: 58px; padding: 10px 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-top: 1px solid #e4e8e6; }
+.vision-result { margin-left: auto; font: 12px 'Cascadia Code', monospace; }
+.vision-result-ok { color: #18724b; }
+.vision-result-pending { color: #8a6b1d; }
+.vision-recipe-form { padding: 14px; }
+.vision-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+.vision-recipe-form .ant-form-item { margin-bottom: 12px; }
+.vision-recipe-form .ant-input-number, .vision-recipe-form .ant-select { width: 100%; }
+.vision-form-footer { min-height: 44px; padding-top: 12px; display: flex; align-items: center; gap: 8px; border-top: 1px solid #e4e8e6; }
+
 @media (max-width: 1100px) {
   .station-workspace, .trace-grid { grid-template-columns: 1fr; }
   .sop-section { order: 2; }
@@ -128,12 +148,14 @@ h1 { margin: 2px 0 7px; color: #1d2523; font-size: 23px; line-height: 1.25; lett
   .step-item:nth-last-child(2) { border-bottom: 0; }
   .config-layout { grid-template-columns: 1fr; }
   .flow-canvas { height: 560px; }
+  .vision-editor-layout { grid-template-columns: minmax(260px, .42fr) minmax(420px, 1fr); }
+  .vision-form-panel { grid-column: 1 / -1; }
 }
 
 @media (max-width: 991px) {
   .page-content { padding: 16px 16px 80px; }
   .side-nav { display: none; }
-  .mobile-nav { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; height: 62px; display: grid; grid-template-columns: repeat(4, 1fr); background: #fff; border-top: 1px solid #d8dedb; }
+  .mobile-nav { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; height: 62px; display: grid; grid-template-columns: repeat(5, 1fr); background: #fff; border-top: 1px solid #d8dedb; }
   .mobile-nav button { min-width: 0; border: 0; background: transparent; color: #77817f; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 10px; }
   .mobile-nav button .anticon { font-size: 18px; }
   .mobile-nav button.active { color: #18724b; background: #eef7f2; }
@@ -165,4 +187,8 @@ h1 { margin: 2px 0 7px; color: #1d2523; font-size: 23px; line-height: 1.25; lett
   .flow-panel { margin-bottom: 12px; }
   .flow-canvas { height: 500px; }
   .config-detail .ant-descriptions, .config-detail > .ant-typography { margin: 10px; }
+  .vision-editor-layout { display: block; }
+  .vision-list-panel, .vision-canvas-panel { margin-bottom: 12px; }
+  .vision-form-grid { grid-template-columns: 1fr; }
+  .vision-result { width: 100%; margin-left: 0; }
 }

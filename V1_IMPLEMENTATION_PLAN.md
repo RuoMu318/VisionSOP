@@ -6,7 +6,7 @@
 
 > V1.4 将交付分为 P0 Software Foundation 与 M0-M6 Camera Field Integration。P0 可在没有相机或现场数据时完成；当前现场 V1 只接入一台固定工业相机。PLC、扫码枪、电批和传感器的 Adapter Contract 保留为后续扩展，但不绑定当前 Runtime Bundle，也不作为当前验收前提。
 
-> 当前代码状态必须如实区分：P0 已实现并在本机验证 USB OpenCV 的实时取帧、JPEG 快照、MJPEG 预览和相机健康状态，但视觉 Evidence 仍只有 `simulated-vision`，尚无真实检测算法。接入摄像头本身只能获得视频，完成模型接入并通过 Shadow 验收后才能输出视觉检测结果。Windows OpenCV 仅用于开发接入；正式 Ubuntu/NVIDIA 部署仍采用 DeepStream/TensorRT。
+> 当前代码状态必须如实区分：`ST01-P0-R03` 已实现并在本机验证 USB OpenCV 的实时取帧、JPEG 快照、MJPEG 预览、相机健康状态和版本化 Vision Recipe Engine。内置 `fixture-occupancy-cv-v1` 是要求空场标定的通用传统视觉基线；它没有已训练的产品语义，也不会在未标定、无发布 Recipe 或画面不可用时生成 Vision Event。DeepStream/TensorRT、MMDetection/RTMDet、MMAction2 与已训练模型仍未接入；Windows OpenCV 仅用于开发验证，正式 Ubuntu/NVIDIA 部署仍采用 DeepStream/TensorRT。
 
 ## 1. 交付决策
 
@@ -278,7 +278,7 @@ P0 先实现稳定的 Adapter Contract，SOP Engine 只消费标准 Event，不�
 | --- | --- | --- | --- |
 | `CameraAdapter` | `SimulatedCameraAdapter`：循环视频/测试帧、在线与断线场景。 | `RtspCameraAdapter`、`UsbCameraAdapter`、`GigECameraAdapter`。 | 视频流、`CAMERA_ONLINE/OFFLINE/CALIBRATION_INVALID`。 |
 | `ModelAdapter` | `SimulatedModelAdapter`：按测试脚本生成目标、状态和动作 Evidence。 | `DeepStreamTensorRtAdapter`。 | `OBJECT_DETECTED`、`OBJECT_STATE_CONFIRMED`、`ACTION_CONFIRMED`。 |
-| `DeviceAdapter` | 仅保留合同测试实现，不绑定 `ST01-P0-R02`。 | 后续版本的 `OpcUaAdapter`、`ModbusTcpAdapter`、`TcpAdapter`、`SerialAdapter` 或厂商 SDK Adapter。 | 后续 `SCANNER_OK`、`TORQUE_OK` 等设备 Event。 |
+| `DeviceAdapter` | 仅保留合同测试实现，不绑定 `ST01-P0-R03`。 | 后续版本的 `OpcUaAdapter`、`ModbusTcpAdapter`、`TcpAdapter`、`SerialAdapter` 或厂商 SDK Adapter。 | 后续 `SCANNER_OK`、`TORQUE_OK` 等设备 Event。 |
 | `EvidenceAdapter` | `LocalEvidenceAdapter`：生成测试 MP4、截图和 Event JSON。 | DeepStream Smart Recording / 已验证录像实现。 | `EVIDENCE_READY/FAILED`。 |
 
 站点配置只描述连接和映射，不包含业务判定代码：
@@ -291,8 +291,8 @@ camera:
   adapter: simulated # 现场改为 rtsp / usb / gige
   profile: camera-profile-v1
 model:
-  adapter: simulated-vision # 现场改为 deepstream_tensorrt
-runtime_bundle: ST01-P0-R02
+  adapter: vision-recipe-runtime # 现场模型适配器改为 deepstream_tensorrt
+runtime_bundle: ST01-P0-R03
 ```
 
 当前摄像头接入流程固定为：安装/连接 -> 填写配置 -> `probe()` -> 画面/ROI/Scene Integrity 验证 -> Vision Event 合同测试 -> 绑定 Runtime Bundle -> Shadow -> 现场验收。后续设备沿用独立 Adapter 流程。任何 Adapter 不得绕过 Event Journal 或直接写 Cycle 状态。
@@ -315,7 +315,7 @@ MMAction2 仅作为训练、验证和导出框架。生产部署优先走单一 
 
 ### 6.1.1 当前实现状态与 GitHub 借鉴
 
-当前提交中的 `simulated-vision` 只生成确定性的测试 Evidence，不读取真实画面，也不包含已训练权重。USB OpenCV 已接入实时预览、JPEG 快照、MJPEG 流和相机健康状态，但不产生 Evidence。真实检测按以下链路实施：
+`simulated-vision` 仍只生成确定性的测试 Evidence，不读取真实画面，也不包含已训练权重。`vision-recipe-runtime` 已增加通用 Recipe 配置、ROI、时序过滤、测试和 `OBJECT_STATE_CONFIRMED` 到 `STATE Evidence` 的合同路径；内置经典视觉 Recipe 必须先标定空场，训练模型 Recipe 在部署前保持 `MODEL_NOT_DEPLOYED`。USB OpenCV 已接入实时预览、JPEG 快照、MJPEG 流和相机健康状态。真实检测按以下链路实施：
 
 | 检测任务 | 算法路线 | 借鉴仓库 | 当前状态 |
 | --- | --- | --- | --- |

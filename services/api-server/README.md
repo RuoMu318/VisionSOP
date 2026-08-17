@@ -1,6 +1,6 @@
 # P0 API Server
 
-The service exposes the deterministic SOP runtime through REST and WebSocket APIs. Runtime Bundle `ST01-P0-R02` is camera-only and currently uses simulated camera/vision adapters; it does not perform real image inference. PostgreSQL is selected by setting `DATABASE_URL`, otherwise SQLite is used.
+The service exposes the deterministic SOP runtime through REST and WebSocket APIs. Runtime Bundle `ST01-P0-R03` is camera-only and adds a versioned Vision Recipe Engine. PostgreSQL is selected by setting `DATABASE_URL`, otherwise SQLite is used.
 
 ```powershell
 $env:SOP_DATA_DIR = "data"
@@ -23,3 +23,20 @@ $env:CAMERA_FPS = "15"
 ```
 
 The station preview uses `/api/v1/cameras/ST01/stream.mjpg`; a current frame is available from `/api/v1/cameras/ST01/snapshot.jpg`. If the camera cannot provide a frame, the API returns `503` and the station reports `CAMERA_UNAVAILABLE` behavior rather than creating simulated video or SOP evidence.
+
+## Vision Recipe Engine
+
+`Vision Recipe` separates a recognizer/model from its station-specific ROI, threshold, temporal filter, output event, and SOP Evidence binding. Recipes are created as drafts, tested, and published as immutable versions. The API rejects a recipe unless its output is an existing required `STATE` Evidence on the bound SOP step.
+
+```text
+GET  /api/v1/vision/models
+GET  /api/v1/vision/recipes
+POST /api/v1/vision/recipes
+PUT  /api/v1/vision/recipes/{template_id}
+POST /api/v1/vision/recipes/{template_id}/draft
+POST /api/v1/vision/recipes/{template_id}/calibration
+POST /api/v1/vision/recipes/{template_id}/test
+POST /api/v1/vision/recipes/{template_id}/publish
+```
+
+The built-in `fixture-occupancy-cv-v1` is a generic OpenCV background-difference baseline for a fixed scene. It only produces a candidate after an empty-scene reference has been captured and the configured temporal filter is satisfied. Object detection, classification, segmentation, and action recipes remain `MODEL_NOT_DEPLOYED` until an approved model adapter is installed; no synthetic Vision Event is created in that state.

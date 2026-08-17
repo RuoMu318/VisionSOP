@@ -44,6 +44,21 @@ class SopVersionRow(Base):
     __table_args__ = (UniqueConstraint("sop_id", "version"),)
 
 
+class VisionRecipeRow(Base):
+    """Immutable published recipes and their editable successor drafts."""
+
+    __tablename__ = "vision_recipe"
+    row_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    template_id: Mapped[str] = mapped_column(String(96), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    station_id: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    definition: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    __table_args__ = (UniqueConstraint("template_id", "version"),)
+
+
 class CycleRow(Base):
     __tablename__ = "cycle"
     cycle_id: Mapped[str] = mapped_column(String(96), primary_key=True)

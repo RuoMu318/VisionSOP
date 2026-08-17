@@ -3,6 +3,7 @@ import {
   ControlOutlined,
   DesktopOutlined,
   FileSearchOutlined,
+  ScanOutlined,
   SafetyCertificateOutlined,
 } from '@ant-design/icons'
 import { Badge, Layout, Menu, Tag, Typography } from 'antd'
@@ -17,6 +18,7 @@ const items = [
   { key: '/alarms', icon: <AlertOutlined />, label: '报警中心' },
   { key: '/trace', icon: <FileSearchOutlined />, label: 'SN 追溯' },
   { key: '/config', icon: <ControlOutlined />, label: '受控配置' },
+  { key: '/vision', icon: <ScanOutlined />, label: '视觉识别' },
 ]
 
 const connectionView: Record<ConnectionState, { status: 'success' | 'processing' | 'warning' | 'default'; text: string }> = {
@@ -58,7 +60,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           />
           <div className="side-footer">
             <span>V0.1.0 P0</span>
-            <span>ST01 · R02</span>
+            <span>ST01 · R03</span>
           </div>
         </Sider>
         <Content className="page-content">{children}</Content>

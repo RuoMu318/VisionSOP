@@ -2,7 +2,7 @@
 
 > 本清单以项目已核验的仓库为准。它是技术选型和研究的登记表，不代表全部会被直接合并、镜像或部署到产品中。
 
-> 当前 `ST01-P0-R02` 已实现 Windows OpenCV USB 摄像头预览、JPEG 快照、MJPEG 流和健康状态，但只使用 `simulated-vision` 测试 Evidence，尚未集成 DeepStream、TensorRT、YOLO、MMDetection/RTMDet 或 MMAction2 的运行时和模型权重。真实摄像头接入后，必须完成下列仓库的许可证审查、版本冻结、目标工位数据训练、ONNX/TensorRT 导出与 Shadow 验收，才可以声称具备视觉检测能力。
+> 当前 `ST01-P0-R03` 已实现 Windows OpenCV USB 摄像头预览、JPEG 快照、MJPEG 流、健康状态和版本化 Vision Recipe Engine。内置 `fixture-occupancy-cv-v1` 是可标定的通用传统视觉基线；它不等同于已训练的产品检测模型。DeepStream、TensorRT、YOLO、MMDetection/RTMDet 和 MMAction2 的运行时与模型权重尚未集成。引入任何模型前必须完成许可证审查、版本冻结、目标工位数据训练、ONNX/TensorRT 导出与 Shadow 验收。
 
 ## 1. 产品核心与优先级
 

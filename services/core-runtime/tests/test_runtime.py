@@ -68,6 +68,43 @@ def submit_evidence(engine, item, sequence=3):
     return engine.ingest(event("EVIDENCE", sequence, payload={"evidence": item.model_dump(mode="json")}))
 
 
+def test_object_state_confirmed_is_normalized_to_state_evidence(tmp_path):
+    bundle = RuntimeBundle(bundle_id="bundle-vision", revision="R01", sop_version="1.0")
+    sop = SopDefinition(
+        sop_id="assembly", version="1.0",
+        steps=(SopStep("S02", (EvidenceRequirement("product_in_fixture", EvidenceKind.STATE),)),),
+    )
+    engine = SopEngine(sop, bundle, JsonlWal(tmp_path / "vision-events.jsonl"), RuntimeMode.SHADOW)
+    engine.ingest(Event(
+        event_id="arm", event_type="CYCLE_ARMED", source="operator", source_instance="operator-1",
+        source_seq=1, occurred_at=NOW, ingested_at=NOW, idempotency_key="arm", cycle_id="cycle-vision",
+        payload={"serial_number": "SN-VISION"},
+    ))
+    engine.ingest(Event(
+        event_id="start", event_type="CYCLE_STARTED", source="operator", source_instance="operator-1",
+        source_seq=2, occurred_at=NOW, ingested_at=NOW, idempotency_key="start", cycle_id="cycle-vision",
+        runtime_bundle_id="bundle-vision",
+    ))
+
+    snapshot = engine.ingest(Event(
+        event_id="vision-3", event_type="OBJECT_STATE_CONFIRMED", source="vision-runtime",
+        source_instance="ST01_CAM01:product_in_fixture", source_seq=3,
+        occurred_at=NOW, ingested_at=NOW, idempotency_key="frame-123", cycle_id="cycle-vision",
+        step_id="S02", runtime_bundle_id="bundle-vision",
+        payload={
+            "state": "product_in_fixture", "value": True, "confidence": 0.98,
+            "model_version": "fixture-occupancy-cv-v1", "valid_for_seconds": 20,
+        },
+    ))
+
+    assert snapshot.completed_step_ids == ("S02",)
+    evidence = snapshot.evidence[0]
+    assert evidence.kind == EvidenceKind.STATE
+    assert evidence.source == "vision-runtime"
+    assert evidence.model_version == "fixture-occupancy-cv-v1"
+    assert evidence.confidence == 0.98
+
+
 def test_normal_completion_keeps_state_and_result_separate(tmp_path):
     engine = running_engine(tmp_path)
     submit_evidence(engine, evidence())

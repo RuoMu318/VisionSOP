@@ -23,6 +23,7 @@ test('renders every primary route', async ({ page }) => {
     ['/alarms', '报警中心'],
     ['/trace', 'SN 质量追溯'],
     ['/config', '受控配置'],
+    ['/vision', '视觉识别模板'],
   ]) {
     await page.goto(route)
     await expect(page.getByRole('heading', { name: heading })).toBeVisible()
@@ -69,7 +70,7 @@ test('station and configuration expose the camera-only visual boundary', async (
   await expect(page.getByText('Device IO', { exact: true })).not.toBeVisible()
 
   await page.goto('/config')
-  await expect(page.getByText('ST01-P0-R02', { exact: true })).toBeVisible()
+  await expect(page.getByText('ST01-P0-R03', { exact: true })).toBeVisible()
   await expect(page.getByText('simulated-vision', { exact: true })).toBeVisible()
   await expect(page.getByText('device Adapter', { exact: true })).not.toBeVisible()
 })

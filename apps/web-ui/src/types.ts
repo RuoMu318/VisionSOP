@@ -110,3 +110,45 @@ export interface CycleDetail {
   evidence_assets: EvidenceAsset[]
   wal_path: string
 }
+
+export type RecognizerType = 'CLASSICAL_CV' | 'OBJECT_DETECTION' | 'CLASSIFICATION' | 'SEGMENTATION' | 'ACTION'
+export type RecipeStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
+export type SpatialRule = 'CENTER_INSIDE_ROI' | 'INTERSECTS_ROI' | 'COUNT_AT_LEAST'
+
+export interface VisionRecipe {
+  template_id: string
+  version: number
+  status: RecipeStatus
+  name: string
+  station_id: string
+  camera_id: string
+  recognizer: { type: RecognizerType; model_id: string | null; target_class: string | null }
+  roi: { id: string; x: number; y: number; width: number; height: number }
+  condition: { confidence_min: number; count_min: number; change_min: number | null }
+  spatial_rule: SpatialRule
+  temporal: { confirm_frames: number; lost_frames: number; cooldown_ms: number }
+  output: { event_type: 'OBJECT_STATE_CONFIRMED'; state: string }
+  sop_binding: { sop_id: string; step_id: string; evidence_key: string }
+}
+
+export type VisionRecipeDraft = Omit<VisionRecipe, 'version' | 'status'>
+
+export interface VisionModel {
+  model_id: string
+  name: string
+  framework: string
+  recognizer_types: RecognizerType[]
+  classes: string[]
+  deployment_status: string
+}
+
+export interface VisionTestResult {
+  status: string
+  candidate: boolean
+  confirmed: boolean
+  confidence: number | null
+  stable_frames: number
+  lost_frames: number
+  event_payload: Record<string, unknown> | null
+  detail: string | null
+}

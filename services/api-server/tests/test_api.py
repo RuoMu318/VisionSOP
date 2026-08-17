@@ -21,6 +21,82 @@ EXPECTED = {
 }
 
 
+def vision_recipe_payload(**changes):
+    payload = {
+        "template_id": "product_in_fixture",
+        "name": "Product in fixture",
+        "station_id": "ST01",
+        "camera_id": "ST01_CAM01",
+        "recognizer": {
+            "type": "CLASSICAL_CV",
+            "model_id": "fixture-occupancy-cv-v1",
+            "target_class": None,
+        },
+        "roi": {"id": "fixture_roi", "x": 100, "y": 120, "width": 480, "height": 320},
+        "condition": {"confidence_min": 0.85, "count_min": 1, "change_min": 0.12},
+        "spatial_rule": "CENTER_INSIDE_ROI",
+        "temporal": {"confirm_frames": 5, "lost_frames": 10, "cooldown_ms": 1000},
+        "output": {"event_type": "OBJECT_STATE_CONFIRMED", "state": "product_in_fixture"},
+        "sop_binding": {"sop_id": "SOP_001", "step_id": "S02", "evidence_key": "product_in_fixture"},
+    }
+    for key, value in changes.items():
+        payload[key] = value
+    return payload
+
+
+def test_vision_recipe_is_versioned_and_publish_is_immutable(client):
+    created = client.post("/api/v1/vision/recipes", json=vision_recipe_payload())
+    assert created.status_code == 201
+    assert created.json()["status"] == "DRAFT"
+    assert created.json()["version"] == 1
+
+    published = client.post("/api/v1/vision/recipes/product_in_fixture/publish")
+    assert published.status_code == 200
+    assert published.json()["status"] == "PUBLISHED"
+
+    assert client.put("/api/v1/vision/recipes/product_in_fixture", json=vision_recipe_payload(name="Changed")).status_code == 409
+
+    draft = client.post("/api/v1/vision/recipes/product_in_fixture/draft")
+    assert draft.status_code == 201
+    assert draft.json()["version"] == 2
+    assert draft.json()["status"] == "DRAFT"
+
+    updated = client.put("/api/v1/vision/recipes/product_in_fixture", json=vision_recipe_payload(name="Fixture presence V2"))
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Fixture presence V2"
+    assert [item["version"] for item in client.get("/api/v1/vision/recipes").json()] == [2, 1]
+
+
+def test_vision_recipe_validates_model_and_event_binding(client):
+    missing_model = vision_recipe_payload(recognizer={
+        "type": "OBJECT_DETECTION", "model_id": None, "target_class": "product",
+    })
+    assert client.post("/api/v1/vision/recipes", json=missing_model).status_code == 422
+
+    invalid_binding = vision_recipe_payload(sop_binding={
+        "sop_id": "SOP_001", "step_id": "S02", "evidence_key": "another_state",
+    })
+    assert client.post("/api/v1/vision/recipes", json=invalid_binding).status_code == 422
+
+    unknown_step = vision_recipe_payload(sop_binding={
+        "sop_id": "SOP_001", "step_id": "S99", "evidence_key": "product_in_fixture",
+    })
+    assert client.post("/api/v1/vision/recipes", json=unknown_step).status_code == 422
+
+    models = client.get("/api/v1/vision/models")
+    assert models.status_code == 200
+    assert models.json()[0]["model_id"] == "fixture-occupancy-cv-v1"
+
+
+def test_vision_recipe_test_mode_never_emits_when_camera_has_no_frame(client):
+    client.post("/api/v1/vision/recipes", json=vision_recipe_payload())
+    result = client.post("/api/v1/vision/recipes/product_in_fixture/test")
+
+    assert result.status_code == 200
+    assert result.json()["result"]["status"] == "CAMERA_UNAVAILABLE"
+    assert result.json()["result"]["event_payload"] is None
+
+
 def test_health_and_initial_station_are_software_only(client):
     health = client.get("/api/v1/health")
     assert health.status_code == 200
@@ -34,8 +110,8 @@ def test_health_and_initial_station_are_software_only(client):
     assert station["cycle"]["conformance"] == "UNKNOWN"
     assert station["station"]["mode"] == "SIMULATION"
     assert station["runtime_bundle"] == {
-        "bundle_id": "ST01-P0-R02",
-        "revision": "R02",
+        "bundle_id": "ST01-P0-R03",
+        "revision": "R03",
         "sop_version": "1.1",
         "configuration": {
             "camera": "simulated",
@@ -56,7 +132,7 @@ def test_usb_camera_mode_exposes_unavailable_camera_without_synthetic_video(monk
         snapshot = client.get("/api/v1/cameras/ST01/snapshot.jpg")
 
     assert station["health"]["camera"] == "UNAVAILABLE"
-    assert station["health"]["model"] == "NOT_CONFIGURED"
+    assert station["health"]["model"] == "NO_PUBLISHED_RECIPE"
     assert station["video"] == {
         "kind": "USB_MJPEG",
         "status": "UNAVAILABLE",
@@ -70,8 +146,8 @@ def test_runtime_bundle_exposes_camera_as_the_only_field_device(client):
     station = client.get("/api/v1/stations/ST01/snapshot").json()
 
     assert station["runtime_bundle"] == {
-        "bundle_id": "ST01-P0-R02",
-        "revision": "R02",
+        "bundle_id": "ST01-P0-R03",
+        "revision": "R03",
         "sop_version": "1.1",
         "configuration": {
             "camera": "simulated",

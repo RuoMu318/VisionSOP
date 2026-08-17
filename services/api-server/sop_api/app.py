@@ -17,6 +17,8 @@ from .db import create_schema, create_session_factory
 from .orchestrator import SCENARIOS, StationOrchestrator
 from .repository import Repository
 from .schemas import AcknowledgeRequest, DispositionRequest, ResetRequest
+from .vision import BUILT_IN_MODELS, VisionRecipeDraft
+from .vision_runtime import VisionRecipeRuntime, VisionRecipeWorker
 
 
 def create_app(
@@ -29,14 +31,25 @@ def create_app(
     create_schema(factory)
     repository = Repository(factory)
     camera: CameraRuntime = (camera_factory or create_camera_runtime)(resolved)
-    orchestrator = StationOrchestrator(resolved, repository, camera)
+    vision_runtime = VisionRecipeRuntime(resolved.data_dir)
+    vision_worker: VisionRecipeWorker | None = None
+
+    def vision_health() -> str:
+        return vision_worker.health() if vision_worker else "INITIALIZING"
+
+    orchestrator = StationOrchestrator(resolved, repository, camera, vision_health=vision_health)
+    vision_worker = VisionRecipeWorker(
+        resolved.station_id, camera, repository, vision_runtime, orchestrator.ingest_vision_confirmation,
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         camera.start()
+        vision_worker.start()
         try:
             yield
         finally:
+            vision_worker.close()
             camera.close()
 
     app = FastAPI(
@@ -55,6 +68,25 @@ def create_app(
     app.state.repository = repository
     app.state.orchestrator = orchestrator
     app.state.camera = camera
+    app.state.vision_runtime = vision_runtime
+    app.state.vision_worker = vision_worker
+
+    def validate_recipe_binding(recipe: VisionRecipeDraft) -> None:
+        if recipe.station_id != resolved.station_id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "recipe station_id is not configured")
+        if recipe.sop_binding.sop_id != orchestrator.sop.sop_id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "recipe is bound to an unknown SOP")
+        step = next((item for item in orchestrator.sop.steps if item.step_id == recipe.sop_binding.step_id), None)
+        if step is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "recipe is bound to an unknown SOP step")
+        if not any(
+            item.key == recipe.sop_binding.evidence_key and item.kind.value == "STATE"
+            for item in step.required
+        ):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "recipe output is not a required STATE Evidence for the bound SOP step",
+            )
 
     @app.get("/api/v1/health")
     def health() -> dict:
@@ -119,6 +151,62 @@ def create_app(
         if row is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "evidence asset not found")
         return orchestrator._asset_view(row)
+
+    @app.get("/api/v1/vision/models")
+    def vision_models() -> list[dict]:
+        return [item.model_dump(mode="json") for item in BUILT_IN_MODELS]
+
+    @app.get("/api/v1/vision/recipes")
+    def vision_recipes(station_id: str | None = Query(default=None)) -> list[dict]:
+        return [item.model_dump(mode="json") for item in repository.vision_recipes(station_id)]
+
+    @app.post("/api/v1/vision/recipes", status_code=status.HTTP_201_CREATED)
+    def create_vision_recipe(recipe: VisionRecipeDraft) -> dict:
+        validate_recipe_binding(recipe)
+        try:
+            return repository.create_vision_recipe(recipe).model_dump(mode="json")
+        except ValueError as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+    @app.put("/api/v1/vision/recipes/{template_id}")
+    def update_vision_recipe(template_id: str, recipe: VisionRecipeDraft) -> dict:
+        validate_recipe_binding(recipe)
+        try:
+            return repository.update_vision_recipe(template_id, recipe).model_dump(mode="json")
+        except ValueError as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+    @app.post("/api/v1/vision/recipes/{template_id}/draft", status_code=status.HTTP_201_CREATED)
+    def create_vision_draft(template_id: str) -> dict:
+        try:
+            return repository.create_vision_draft(template_id).model_dump(mode="json")
+        except LookupError as error:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "vision recipe not found") from error
+        except ValueError as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+    @app.post("/api/v1/vision/recipes/{template_id}/publish")
+    def publish_vision_recipe(template_id: str) -> dict:
+        try:
+            return repository.publish_vision_recipe(template_id).model_dump(mode="json")
+        except ValueError as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+    @app.post("/api/v1/vision/recipes/{template_id}/calibration")
+    def calibrate_vision_recipe(template_id: str, version: int | None = Query(default=None, ge=1)) -> dict:
+        recipe = repository.vision_recipe(template_id, version)
+        if recipe is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "vision recipe not found")
+        result = vision_runtime.calibrate(recipe, camera.snapshot_jpeg())
+        return {"recipe": recipe.model_dump(mode="json"), "calibration": result.__dict__}
+
+    @app.post("/api/v1/vision/recipes/{template_id}/test")
+    def test_vision_recipe(template_id: str, version: int | None = Query(default=None, ge=1)) -> dict:
+        recipe = repository.vision_recipe(template_id, version)
+        if recipe is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "vision recipe not found")
+        result = vision_runtime.evaluate(recipe, camera.snapshot_jpeg())
+        return {"recipe": recipe.model_dump(mode="json"), "result": result.__dict__}
 
     @app.get("/api/v1/cameras/{station_id}/snapshot.jpg")
     def camera_snapshot(station_id: str) -> Response:
